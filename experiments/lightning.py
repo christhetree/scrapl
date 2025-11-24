@@ -11,9 +11,11 @@ import torch as tr
 from nnAudio.features import CQT
 from torch import Tensor as T
 from torch import nn
+from tqdm import tqdm
 
+from experiments import util
 from experiments.losses import JTFSTLoss, Scat1DLoss
-from experiments.paths import OUT_DIR
+from experiments.paths import OUT_DIR, CONFIGS_DIR
 from experiments.scrapl_loss import SCRAPLLoss
 
 logging.basicConfig()
@@ -111,6 +113,21 @@ class SCRAPLLightingModule(pl.LightningModule):
         self.global_n = 0
         self.val_l1_s = defaultdict(list)
 
+        # Audio losses
+        self.audio_dists = nn.ModuleDict()
+        self.audio_dists["jtfs"] = util.load_class_from_yaml(
+            os.path.join(CONFIGS_DIR, "losses/jtfs.yml")
+        )
+        self.audio_dists["mss_lin"] = util.load_class_from_yaml(
+            os.path.join(CONFIGS_DIR, "losses/mss_meso.yml")
+        )
+        self.audio_dists["mss_log_lin"] = util.load_class_from_yaml(
+            os.path.join(CONFIGS_DIR, "losses/mss_meso_log.yml")
+        )
+        self.audio_dists["mss_rev"] = util.load_class_from_yaml(
+            os.path.join(CONFIGS_DIR, "losses/mss_revisited.yml")
+        )
+
         if grad_mult != 1.0:
             assert not isinstance(self.loss_func, SCRAPLLoss)
             log.info(f"Adding grad multiplier hook of {self.grad_mult}")
@@ -144,6 +161,8 @@ class SCRAPLLightingModule(pl.LightningModule):
             "rmse_d",
             "rmse_s",
         ]
+        for audio_name in self.audio_dists.keys():
+            tsv_cols.append(f"audio__{audio_name}")
         if run_name and not use_warmup:
             self.tsv_path = os.path.join(OUT_DIR, f"{self.run_name}.tsv")
             if not os.path.exists(self.tsv_path):
@@ -423,6 +442,29 @@ class SCRAPLLightingModule(pl.LightningModule):
                 # x_hat = self.synth(theta_d_0to1_hat, theta_s_0to1_hat, seed_hat, seed_target=seed)
                 U_hat = self.calc_U(x_hat)
 
+        # Calc audio distances
+        if stage == "test":
+            assert x is not None
+            assert x_hat is not None
+            audio_dist_vals = []
+            with tr.no_grad():
+                for dist_name, dist in self.audio_dists.items():
+                    log.info(f"{dist_name}")
+                    if dist_name == "jtfs":
+                        jtfs_vals = []
+                        for idx in range(x.size(0)):
+                            curr_x = x[idx, :, :].unsqueeze(0)
+                            curr_x_hat = x_hat[idx, :, :].unsqueeze(0)
+                            jtfs_val = dist(curr_x_hat, curr_x)
+                            jtfs_vals.append(jtfs_val)
+                        jtfs_vals = tr.stack(jtfs_vals, dim=0)
+                        dist_val = jtfs_vals.mean()
+                    else:
+                        dist_val = dist(x_hat, x)
+                    audio_dist_vals.append(dist_val.cpu().item())
+        else:
+            audio_dist_vals = [""] * len(self.audio_dists)
+
         # TSV logging
         if stage != "train" and self.tsv_path:
             seed_everything = tr.random.initial_seed()
@@ -433,7 +475,8 @@ class SCRAPLLightingModule(pl.LightningModule):
                     f"{self.global_n}\t{time_epoch}\t{loss.item()}\t"
                     f"{l1_theta.item()}\t{l1_d.item()}\t{l1_s.item()}\t"
                     f"{l2_theta.item()}\t{l2_d.item()}\t{l2_s.item()}\t"
-                    f"{rmse_theta.item()}\t{rmse_d.item()}\t{rmse_s.item()}\n"
+                    f"{rmse_theta.item()}\t{rmse_d.item()}\t{rmse_s.item()}\t"
+                    f"{'\t'.join([str(v) for v in audio_dist_vals])}\n"
                 )
 
         out_dict = {

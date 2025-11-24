@@ -42,7 +42,7 @@ model:
     feature_type: cqt
     cqt_eps: 1e-3
     log_x: false
-    log_x_hat: false
+    log_x_hat: true
     log_val_grads: false
 
     run_name: ploss_adam_1e-5__texture_32_32_5_meso_b32
