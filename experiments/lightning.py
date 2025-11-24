@@ -172,8 +172,8 @@ class SCRAPLLightingModule(pl.LightningModule):
             self.tsv_path = None
 
         # Compile
-        if tr.cuda.is_available() and not use_warmup:
-            self.model = tr.compile(self.model)
+        # if tr.cuda.is_available() and not use_warmup:
+            # self.model = tr.compile(self.model)
 
     def on_train_start(self) -> None:
         try:
@@ -444,12 +444,12 @@ class SCRAPLLightingModule(pl.LightningModule):
 
         # Calc audio distances
         if stage == "test":
+            log.info("Calculating audio distances")
             assert x is not None
             assert x_hat is not None
             audio_dist_vals = []
             with tr.no_grad():
                 for dist_name, dist in self.audio_dists.items():
-                    log.info(f"{dist_name}")
                     if dist_name == "jtfs":
                         jtfs_vals = []
                         for idx in range(x.size(0)):
@@ -465,6 +465,8 @@ class SCRAPLLightingModule(pl.LightningModule):
         else:
             audio_dist_vals = [""] * len(self.audio_dists)
 
+        audio_dist_tsv_str = "\t".join([str(v) for v in audio_dist_vals])
+
         # TSV logging
         if stage != "train" and self.tsv_path:
             seed_everything = tr.random.initial_seed()
@@ -476,7 +478,7 @@ class SCRAPLLightingModule(pl.LightningModule):
                     f"{l1_theta.item()}\t{l1_d.item()}\t{l1_s.item()}\t"
                     f"{l2_theta.item()}\t{l2_d.item()}\t{l2_s.item()}\t"
                     f"{rmse_theta.item()}\t{rmse_d.item()}\t{rmse_s.item()}\t"
-                    f"{'\t'.join([str(v) for v in audio_dist_vals])}\n"
+                    f"{audio_dist_tsv_str}\n"
                 )
 
         out_dict = {

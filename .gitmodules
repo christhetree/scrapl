@@ -1,10 +1,10 @@
 [submodule "kymatio"]
 	path = kymatio
-	url = git@github.com:christhetree/kymatio.git
+	url = https://github.com/christhetree/kymatio.git
 	branch = cm--scrapl
 [submodule "kadtk"]
 	path = kadtk
-	url = git@github.com:YoonjinXD/kadtk.git
+	url = https://github.com/YoonjinXD/kadtk.git
 [submodule "fadtk"]
 	path = fadtk
-	url = git@github.com:christhetree/fadtk.git
+	url = https://github.com/christhetree/fadtk.git

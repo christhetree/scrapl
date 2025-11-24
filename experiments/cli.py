@@ -6,7 +6,11 @@ import torch as tr
 import wandb
 import yaml
 from jsonargparse import lazy_instance
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
+from pytorch_lightning.callbacks import (
+    ModelCheckpoint,
+    LearningRateMonitor,
+    TQDMProgressBar,
+)
 from pytorch_lightning.cli import LightningCLI, LightningArgumentParser
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
@@ -208,6 +212,7 @@ class CustomLightningCLI(LightningCLI):
                 # LogGradientCallback(),
                 # LogAudioCallback(),
                 CleanupLogsCallback(),
+                # TQDMProgressBar(leave=True),
             ],
             "logger": {
                 "class_path": "pytorch_lightning.loggers.TensorBoardLogger",
