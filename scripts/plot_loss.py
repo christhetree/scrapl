@@ -347,7 +347,9 @@ def plot_xy_vals(
 
     ax.legend()
     # ax.legend(fontsize=10)
+    # ax.legend(fontsize=18)
     # ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.0, fontsize=12)
+    # ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.0, fontsize=18)
 
     ax.grid(True, which="both", ls="--", alpha=0.5)
 
@@ -355,21 +357,34 @@ def plot_xy_vals(
 if __name__ == "__main__":
     tsv_names_and_paths = [
         # Granular
-        # ("SCRAPL", os.path.join(OUT_DIR, f"iclr_2026/scrapl_saga_pwa_1e-5__adaptive_n_batches_10_n_iter_20_param_agg_none__texture_32_32_5_meso_b32.tsv")),
-        # ("MSS Linear", os.path.join(OUT_DIR, f"mss_meso_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("MSS Log + Lin.", os.path.join(OUT_DIR, f"mss_meso_log_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("MSS Revisited", os.path.join(OUT_DIR, f"iclr_2026/mss_revisited_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("MSS Random", os.path.join(OUT_DIR, f"iclr_2026/rand_mss_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("MS-CLAP", os.path.join(OUT_DIR, f"iclr_2026/clap_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("PANNs", os.path.join(OUT_DIR, f"iclr_2026/panns_wglm_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("MSS Linear", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/mss_lin_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("MSS Revisited", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/mss_revisited_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("MSS Log + Lin.", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/mss_log_lin_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("MSS Random", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/mss_rand_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("MS-CLAP", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/clap_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("PANNs", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/panns_wglm_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("SCRAPL", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_1e-5__theta_is_n_batches_10__texture_32_32_5_meso_b32.tsv")),
 
-        ("SCRAPL: no $\\mathcal{P}$-Adam, no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_padam_no_psaga_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("SCRAPL: no $\\mathcal{P}$-Adam, no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_padam_no_psaga_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
         # ("saga_adam", os.path.join(OUT_DIR, f"iclr_2026/scrapl_saga_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
-        ("SCRAPL: no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_psaga_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
-        ("SCRAPL: no $\\theta$-Importance Sampling ($\\theta$-IS)", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
-        ("SCRAPL", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_1e-5__theta_is_n_batches_10__texture_32_32_5_meso_b32.tsv")),
-        # ("JTFS", os.path.join(OUT_DIR, f"iclr_2026/jtfst_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
-        # ("ploss", os.path.join(OUT_DIR, f"iclr_2026/ploss_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("SCRAPL: no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_psaga_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("SCRAPL: no $\\theta$-Importance Sampling ($\\theta$-IS)", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_no_theta_is_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("JTFS", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/jtfst_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        # ("SCRAPL", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/scrapl_1e-5__theta_is_n_batches_10__texture_32_32_5_meso_b32.tsv")),
+        # ("ploss", os.path.join(OUT_DIR, f"iclr_2026/exp_1_granular/ploss_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+
+        # Rebuttal
+        ("MSS Linear", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/mss_meso_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("MSS Log + Lin.", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/mss_meso_log_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("MSS Revisited", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/mss_revisited_1e-5__texture_32_32_5_meso_b32__2.tsv")),
+        ("MSS Random", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/rand_mss_1e-5__texture_32_32_5_meso_b32__2.tsv")),
+        ("MS-CLAP", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/clap_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("PANNs", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/panns_wglm_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("SCRAPL: no $\\mathcal{P}$-Adam, no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/scrapl_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("SCRAPL: no $\\mathcal{P}$-SAGA, no $\\theta$-IS", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/scrapl_pwa_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("SCRAPL: no $\\theta$-Importance Sampling ($\\theta$-IS)", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/scrapl_saga_pwa_1e-5__texture_32_32_5_meso_b32.tsv")),
+        ("SCRAPL", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/scrapl_saga_pwa_1e-5__adaptive_n_batches_10_n_iter_20_param_agg_none__texture_32_32_5_meso_b32.tsv")),
+        ("ploss", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/ploss_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
 
         # Chirplet
         # ("lo_lo", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_lo.tsv")),
@@ -407,7 +422,7 @@ if __name__ == "__main__":
     stage = "test"
     x_col = "step"
 
-    y_col_prefix = ""
+    # y_col_prefix = ""
     # y_col_prefix = "BD__"
     # y_col_prefix = "SD__"
     # y_col_prefix = "Tom__"
@@ -424,26 +439,32 @@ if __name__ == "__main__":
     # use_log_y = True
 
     # colors = ["green", "orange", "black", "blue", "red"]
-    # colors = ["blue", "cyan", "red", "orange", "magenta", "green", "black"]
+    # colors = ["cyan", "orange", "red", "magenta", "green", "black", "blue"]
     # colors = ["red", "blue"]
     # colors = ["black", "blue"]
 
     for y_col_suffix in ["_theta", "_d", "_s"]:
     # for y_col_suffix in ["_theta"]:
     # for y_col_suffix in ["_d", "_s"]:
+    # for y_col_suffix in ["audio__mss_meso_log"]:
+    # for y_col_suffix in ["audio__mel_stft"]:
+    # for y_col_suffix in ["audio__mfcc"]:
+    # for y_col_suffix in [f"audio__U__{y_col_dist}"]:
+    # for y_col_suffix in ["audio__jtfs"]:
+    # for y_col_suffix in ["loss"]:
     # for y_col_suffix in [
-    #     f"audio__mss_meso_log",
-    #     f"audio__mel_stft",
-    #     f"audio__mfcc",
-    #     f"audio__U__{y_col_dist}",
-    #     f"audio__jtfs",
-    #     f"fe__Loudness_0_2__{y_col_dist}",
-    #     f"fe__Loudness_2_64__{y_col_dist}",
-    #     f"fe__SpectralCentroid_0_2__{y_col_dist}",
-    #     f"fe__SpectralCentroid_2_64__{y_col_dist}",
-    #     f"fe__SpectralFlatness_0_2__{y_col_dist}",
-    #     f"fe__SpectralFlatness_2_64__{y_col_dist}",
-    #     f"fe__TemporalCentroid_0_1__{y_col_dist}",
+    # f"audio__mss_meso_log",
+    # f"audio__mel_stft",
+    # f"audio__mfcc",
+    # f"audio__U__{y_col_dist}",
+    # f"audio__jtfs",
+    # f"fe__Loudness_0_2__{y_col_dist}",
+    # f"fe__Loudness_2_64__{y_col_dist}",
+    # f"fe__SpectralCentroid_0_2__{y_col_dist}",
+    # f"fe__SpectralCentroid_2_64__{y_col_dist}",
+    # f"fe__SpectralFlatness_0_2__{y_col_dist}",
+    # f"fe__SpectralFlatness_2_64__{y_col_dist}",
+    # f"fe__TemporalCentroid_0_1__{y_col_dist}",
     # ]:
         y_col = f"{y_col_prefix}{y_col_suffix}"
 
@@ -451,6 +472,7 @@ if __name__ == "__main__":
         # plt.rcParams.update({"font.size": 12})
         # plt.rcParams.update({"font.size": 14})
         # plt.rcParams.update({"font.size": 16})
+        # plt.rcParams.update({"font.size": 18})
         fig, ax = plt.subplots(figsize=(6, 4), dpi=300)
         # fig, ax = plt.subplots(figsize=(8.5, 4), dpi=300)
         ax.set_title(f"{stage} {y_col}")
@@ -477,6 +499,7 @@ if __name__ == "__main__":
 
         if stage != "test":
             fig.tight_layout()
+            plt.tight_layout()
             plt.savefig(os.path.join(OUT_DIR, f"{stage}_{y_col}_plot.pdf"))
             plt.show()
 

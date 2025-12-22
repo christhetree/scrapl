@@ -55,7 +55,7 @@
             <h2>Abstract</h2>
             <hr>
             <p>
-                The Euclidean distance between differentiable wavelet scattering transform coefficients (known as paths) provides informative gradients for perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing.
+                The Euclidean distance between wavelet scattering transform coefficients (known as <em>paths</em>) provides informative gradients for perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing.
                 However, these transforms are computationally expensive when employed as differentiable loss functions for stochastic gradient descent due to their numerous paths, which significantly limits their use in neural network training.
                 Against this problem, we propose "<b>Sc</b>attering transform with <b>Ra</b>ndom <b>P</b>aths for machine <b>L</b>earning" (SCRAPL): a stochastic optimization scheme for efficient evaluation of multivariable scattering transforms.
                 We implement SCRAPL for the joint time–frequency scattering transform (JTFS) which demodulates spectrotemporal patterns at multiple scales and rates, allowing a fine characterization of intermittent auditory textures.
@@ -78,9 +78,11 @@
             <p>
                 Below, we provide listening examples for aligned (<em>micro</em>, Table 1) and unaligned (<em>meso</em>, Table 2) unsupervised sound matching for a <a href="https://jordieshier.com/projects/nime2024/" target=”_blank”>DDSP synth implementation</a> of the Roland TR-808 drum machine.
                 Please refer to Sections 4.4 and 5.3 of the paper for details.
-                <br>
+                <br><br>
                 There are four different drum types: snare drum (SD), bass drum (BD), tom (Tom), and hi-hat (HH).
                 <br>
+                We note that this particular DDSP synthesizer implementation has been designed to only generate snare samples, so some bass drum, tom, and especially hi-hat analog target samples may go beyond the limitations of this synthesizer architecture, resulting in perceptually dissimilar reconstruction.
+                <br><br>
                 Tables can be randomized by clicking the button beneath them.
                 <br>
                 Loudness peak normalization (applied to original samples individually as a post-processing step) can be toggled on and off.

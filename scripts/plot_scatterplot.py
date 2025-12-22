@@ -15,8 +15,9 @@ log.setLevel(level=os.environ.get("LOGLEVEL", "WARNING"))
 if __name__ == "__main__":
     model_step_speed = 54.727
     p_loss_speed = 0.5158
-    p_loss_l1 = 20.505
 
+    # L1 theta
+    p_loss_l1 = 20.505
     orig_coords = [
         ("JTFS", 42.377, 0, 1731),
         # ("SCRAPL (no $\\theta$-IS)", 73.809, 13.376, 89.82),
@@ -28,6 +29,20 @@ if __name__ == "__main__":
         ("MS-CLAP", 165.85, 8.2092, 75.55),
         ("PANNs", 158.94, 4.3815, 29.29),
     ]
+
+    # # JTFS
+    # p_loss_l1 = 240.99
+    # orig_coords = [
+    #     ("JTFS", 236, 0, 1731),
+    #     # ("SCRAPL (no $\\theta$-IS)", 73.809, 13.376, 89.82),
+    #     ("SCRAPL", 261.54, 5.0835, 89.82),
+    #     ("MSS Linear", 412.38, 0.83506, 26.26),
+    #     ("MSS Log + Linear", 361.1, 1.4341, 19.06),
+    #     ("MSS Revisited", 393.65, 9.2433, 16.96),
+    #     ("MSS Random", 321.22, 0.79318, 24.71),
+    #     ("MS-CLAP", 296.95, 2.2629, 75.55),
+    #     ("PANNs", 292.8, 1.1602, 29.29),
+    # ]
 
     coords = []
     for name, y_mean, y_ci, t in orig_coords:
@@ -98,14 +113,21 @@ if __name__ == "__main__":
         ["1", "2", "4", "8", "16", "32"],
     )
     plt.xlim(0.9, 34)
+
+    # L1 theta
     plt.yticks(
-        # [2, 4, 8, 16],
-        # ["2", "4", "8", "16"],
         [1, 2, 4, 8, 16],
         ["1", "2", "4", "8", "16"],
     )
-    # set ylim
     plt.ylim(0.85, 24)
+
+    # # JTFS
+    # plt.yticks(
+    #     [0.8, 1, 1.2, 1.4, 1.6, 1.8],
+    #     ["0.8", "1.0", "1.2", "1.4", "1.6", "1.8"],
+    # )
+    # plt.ylim(0.8, 1.8)
+
     # Disable minor ticks
     plt.gca().xaxis.set_minor_locator(ticker.NullLocator())
     plt.gca().yaxis.set_minor_locator(ticker.NullLocator())
@@ -119,6 +141,7 @@ if __name__ == "__main__":
     plt.tight_layout()
 
     # Save as .PDF
-    out_path = os.path.join(OUT_DIR, "fig_scatterplot.pdf")
+    out_path = os.path.join(OUT_DIR, "fig_scatterplot_l1_theta.pdf")
+    # out_path = os.path.join(OUT_DIR, "fig_scatterplot_jtfs.pdf")
     plt.savefig(out_path, format="pdf", dpi=300)
     plt.show()

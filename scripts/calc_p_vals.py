@@ -10,6 +10,19 @@ log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 
+def calc_stats(vals_A: np.ndarray, vals_B: np.ndarray) -> None:
+    diff = vals_B - vals_A
+    diff_mean = np.mean(diff)
+    # diff_std = np.std(diff)
+    # diff_sem = diff_std / np.sqrt(len(diff))
+    # diff_95ci = 1.96 * diff_sem
+    diff_95ci_int = stats.t.interval(0.95, len(diff)-1, loc=np.mean(diff), scale=stats.sem(diff))
+    diff_95ci = (diff_95ci_int[1] - diff_95ci_int[0]) / 2.0
+    log.info(f"1 vs 2 paired t-test mean diff: {diff_mean:.3g}, 95% CI: ±{diff_95ci:.2g}")
+    statistic, p_value = stats.ttest_rel(vals_B, vals_A)
+    log.info(f"1 vs 2 paired t-test statistic: {statistic}, p-value: {p_value:.2g}")
+
+
 if __name__ == "__main__":
     scrapl_no_padam_no_psaga_no_is = ('{'
                                       '"l1_theta": [0.12249950968450113, 0.09221455118348516, 0.12581262617341932, 0.08770664709229617, 0.1300856012009805, 0.11527488957489686, 0.08265658972724788, 0.07753382743366298, 0.09280013148823088, 0.10716415124554783, 0.09558871292298836, 0.08839813475647276, 0.09242322848689168, 0.10099340086021727, 0.07122302896553466, 0.12255409167658894, 0.09148139722885622, 0.0778433146976655, 0.13470310068899582, 0.08486760023140134], '
@@ -41,23 +54,22 @@ if __name__ == "__main__":
                                       '"converged_x_vals": [4800, 5760, 5664, 5952, 5952, 6912, 5472, 7584, 4224, 5664, 5664, 5472, 7008, 4128, 6432, 5280, 10752, 7872, 4800, 4896]'
                                       '}')
 
+    # mult = 1000
+    mult = 1
     y_col = "l1_theta"
     # y_col = "l1_d"
     # y_col = "l1_s"
-    # y_col = "converged_x_vals"
     # y_col = "tvs_x_normed"
+    # y_col = "converged_x_vals"
 
-    vals_A = np.array(json.loads(scrapl_no_padam_no_psaga_no_is)[y_col])
-    vals_B = np.array(json.loads(scrapl_no_psaga_no_is)[y_col])
-    statistic, p_value = stats.ttest_rel(vals_A, vals_B)
-    log.info(f"1 vs 2 paired t-test statistic: {statistic}, p-value: {p_value}")
+    vals_A = np.array(json.loads(scrapl_no_padam_no_psaga_no_is)[y_col]) * mult
+    vals_B = np.array(json.loads(scrapl_no_psaga_no_is)[y_col]) * mult
+    calc_stats(vals_A, vals_B)
 
-    vals_A = np.array(json.loads(scrapl_no_psaga_no_is)[y_col])
-    vals_B = np.array(json.loads(scrapl_no_is)[y_col])
-    statistic, p_value = stats.ttest_rel(vals_A, vals_B)
-    log.info(f"2 vs 3 paired t-test statistic: {statistic}, p-value: {p_value}")
+    vals_A = np.array(json.loads(scrapl_no_psaga_no_is)[y_col]) * mult
+    vals_B = np.array(json.loads(scrapl_no_is)[y_col]) * mult
+    calc_stats(vals_A, vals_B)
 
-    vals_A = np.array(json.loads(scrapl_no_is)[y_col])
-    vals_B = np.array(json.loads(scrapl)[y_col])
-    statistic, p_value = stats.ttest_rel(vals_A, vals_B)
-    log.info(f"3 vs 4 paired t-test statistic: {statistic}, p-value: {p_value}")
+    vals_A = np.array(json.loads(scrapl_no_is)[y_col]) * mult
+    vals_B = np.array(json.loads(scrapl)[y_col]) * mult
+    calc_stats(vals_A, vals_B)
