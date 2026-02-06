@@ -2,50 +2,17 @@ import importlib
 import logging
 import os
 from collections import defaultdict
-from typing import List, Any, Union, Dict, Tuple, Iterator, Set, Optional
+from typing import List, Any, Union, Dict, Tuple, Set, Optional
 
 import torch as tr
 import torch.nn.functional as F
 import yaml
-from matplotlib import patches
 from scipy.stats import loguniform
-from torch import Tensor as T, nn
+from torch import Tensor as T
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
-
-
-class ReadOnlyTensorDict(nn.Module):
-    def __init__(self, data: Dict[str | int, T], persistent: bool = True):
-        super().__init__()
-        self.persistent = persistent
-        self.keys = set(data.keys())
-        for k, v in data.items():
-            self.register_buffer(f"tensor_{k}", v, persistent=persistent)
-
-    def __getitem__(self, key: str | int) -> T:
-        return self.get_buffer(f"tensor_{key}")
-
-    def __contains__(self, key: str | int) -> bool:
-        return key in self.keys
-
-    def __len__(self) -> int:
-        return len(self.keys)
-
-    def __iter__(self) -> Iterator[str | int]:
-        return iter(self.keys)
-
-    def keys(self) -> Iterator[str | int]:
-        return iter(self.keys)
-
-    def values(self) -> Iterator[T]:
-        for k in self.keys:
-            yield self[k]
-
-    def items(self) -> Iterator[Tuple[str | int, T]]:
-        for k in self.keys:
-            yield k, self[k]
 
 
 def get_path_keys(
@@ -95,12 +62,14 @@ def get_path_keys(
         )
         key_infos[k] = key_info
         all_keys.append(k)
-        key_data.append({
-            "key": k,
-            "spin": spin,
-            "am_cf_hz": am_cf_cycles_p_sec,
-            "fm_cf_oct_hz": fm_cf_oct_hz,
-        })
+        key_data.append(
+            {
+                "key": k,
+                "spin": spin,
+                "am_cf_hz": am_cf_cycles_p_sec,
+                "fm_cf_oct_hz": fm_cf_oct_hz,
+            }
+        )
 
         am_freqs.append(am_cf_cycles_p_sec)
         if spin == -1:
@@ -333,7 +302,7 @@ def is_connected_via_ad_graph(output: T, input_: T) -> bool:
         visited.add(fn)
 
         # Check if the source tensor is an input to this function
-        if hasattr(fn, 'variable') and fn.variable is input_:
+        if hasattr(fn, "variable") and fn.variable is input_:
             return True
 
         # Add next functions to the stack

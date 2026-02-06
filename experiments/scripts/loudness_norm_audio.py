@@ -5,7 +5,7 @@ import pyloudnorm as pyln
 import torch as tr
 import torchaudio
 
-from experiments.paths import OUT_DIR
+from src.paths import OUT_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ import torch.nn as nn
 import torchaudio
 from torch import Tensor as T
 
-from experiments.paths import OUT_DIR
+from src.paths import OUT_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

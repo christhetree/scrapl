@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import ticker
 
-from experiments.paths import OUT_DIR
+from src.paths import OUT_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

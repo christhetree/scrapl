@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 
-from experiments.paths import DATA_DIR
+from src.paths import DATA_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

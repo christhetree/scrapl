@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 import torch as tr
 from torch.utils.data import DataLoader
 
-from experiments.datasets import ChirpTextureDataset
+from src.datasets import ChirpTextureDataset
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

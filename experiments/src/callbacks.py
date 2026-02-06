@@ -12,8 +12,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
 from torch import Tensor as T
 
-from experiments.lightning import SCRAPLLightingModule
-from experiments.plotting import (
+from src.lightning import SCRAPLLightingModule
+from src.plotting import (
     fig2img,
     plot_waveforms_stacked,
     plot_scalogram,

@@ -7,7 +7,6 @@ dependencies:
   - pip:
     - auraloss
     - black
-    - dasp-pytorch
     - einops
     - hypy-utils
     - jsonargparse[signatures]

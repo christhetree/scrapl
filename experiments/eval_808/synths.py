@@ -14,10 +14,10 @@ from typing import Tuple
 from typing import Union
 
 import torch
+import torch as tr
 import torchaudio
 from einops import repeat
 from torch import Tensor as T, nn
-import torch as tr
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
@@ -759,7 +759,9 @@ class DDSP808Synth(Snare808):
             curr_delta = delta[idx].item()
             assert self.delta_min <= curr_delta <= self.delta_max
             n_padding = curr_delta - self.delta_min
-            curr_y = tr.nn.functional.pad(curr_y, (n_padding, 0), mode="constant", value=0.0)
+            curr_y = tr.nn.functional.pad(
+                curr_y, (n_padding, 0), mode="constant", value=0.0
+            )
             curr_y = curr_y[:, : self.num_samples]
             shifted_ys.append(curr_y)
         y = tr.stack(shifted_ys, dim=0)

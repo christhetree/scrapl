@@ -3,4 +3,4 @@ from .frontend.torch_frontend import TimeFrequencyScraplTorch as TimeFrequencySc
 TimeFrequencyScrapl.__module__ = "kymatio.torch"
 TimeFrequencyScrapl.__name__ = "TimeFrequencyScrapl"
 
-__all__ = ['TimeFrequencyScrapl']
+__all__ = ["TimeFrequencyScrapl"]

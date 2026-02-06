@@ -1,12 +1,13 @@
 import logging
 import os
 from typing import List, Tuple
+
 import numpy as np
 import pytorch_lightning as pl
 import torch as tr
+import torchaudio
 from torch import Tensor as T
 from torch.utils.data import DataLoader, Dataset
-import torchaudio
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

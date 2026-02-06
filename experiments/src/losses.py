@@ -11,9 +11,9 @@ from torch import Tensor as T
 from torchaudio.transforms import Resample, MFCC
 from transformers import Wav2Vec2Model
 
-from experiments.panns.model_loader import PANNsModel
-from experiments.util import ReadOnlyTensorDict
 from kymatio.torch import Scattering1D, TimeFrequencyScattering
+from scrapl.util import ReadOnlyTensorDict
+from src.panns.model_loader import PANNsModel
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
@@ -419,7 +419,6 @@ if __name__ == "__main__":
     # log.info(f"emb.shape = {emb.shape}")
     loss = panns.forward(audio, audio_target)
     log.info(f"loss = {loss}")
-
 
     # mss = LogMSSLoss()
     # mss(audio, audio_target)

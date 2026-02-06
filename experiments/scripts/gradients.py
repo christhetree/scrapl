@@ -10,9 +10,9 @@ from torch import Tensor as T
 from torch import nn
 from tqdm import tqdm
 
-from experiments import util
-from experiments.paths import CONFIGS_DIR, OUT_DIR
-from experiments.synths import ChirpTextureSynth
+from src import util
+from src.paths import CONFIGS_DIR, OUT_DIR
+from src.synths import ChirpTextureSynth
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

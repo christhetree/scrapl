@@ -1,10 +1,23 @@
 import numpy as np
-from kymatio.scattering1d.core.timefrequency_scattering import \
-    time_averaging, frequency_averaging, time_formatting
+
+from kymatio.scattering1d.core.timefrequency_scattering import (
+    time_averaging,
+    frequency_averaging,
+)
 
 
-def jtfs_singlepath(U_0, backend, filters, log2_stride, average_local,
-        filters_fr, log2_stride_fr, average_local_fr, n2, n_fr):
+def jtfs_singlepath(
+    U_0,
+    backend,
+    filters,
+    log2_stride,
+    average_local,
+    filters_fr,
+    log2_stride_fr,
+    average_local_fr,
+    n2,
+    n_fr,
+):
     """
     Parameters
     ----------
@@ -50,33 +63,33 @@ def jtfs_singlepath(U_0, backend, filters, log2_stride, average_local,
     U_1_hats = []
     for n1 in range(len(psi1)):
         # Convolution + downsampling
-        j1 = psi1[n1]['j']
+        j1 = psi1[n1]["j"]
         k1 = min(j1, log2_stride) if average_local else j1
-        U_1_c = backend.cdgmm(U_0_hat, psi1[n1]['levels'][0])
-        U_1_hat = backend.subsample_fourier(U_1_c, 2 ** k1)
+        U_1_c = backend.cdgmm(U_0_hat, psi1[n1]["levels"][0])
+        U_1_hat = backend.subsample_fourier(U_1_c, 2**k1)
         U_1_c = backend.ifft(U_1_hat)
 
         # Take the modulus
         U_1_m = backend.modulus(U_1_c)
         U_1_hat = backend.rfft(U_1_m)
-        
+
         # Width-first algorithm: store U1 in anticipation of next layer
-        U_1_hats.append({'coef': U_1_hat, 'j': (j1,), 'n': (n1,)})
+        U_1_hats.append({"coef": U_1_hat, "j": (j1,), "n": (n1,)})
 
     # Second order.
     psi2 = filters[2]
-    j2 = psi2[n2]['j']
+    j2 = psi2[n2]["j"]
     Y_2_list = []
 
     # Time scattering
     for U_1_hat in U_1_hats:
-        j1 = U_1_hat['j'][0]
+        j1 = U_1_hat["j"][0]
         k1 = min(j1, log2_stride) if average_local else j1
 
         if j2 > j1:
-            k2 = min(j2-k1, log2_stride) if average_local else (j2-k1)
-            U_2_c = backend.cdgmm(U_1_hat['coef'], psi2[n2]['levels'][k1])
-            U_2_hat = backend.subsample_fourier(U_2_c, 2 ** k2)
+            k2 = min(j2 - k1, log2_stride) if average_local else (j2 - k1)
+            U_2_c = backend.cdgmm(U_1_hat["coef"], psi2[n2]["levels"][k1])
+            U_2_hat = backend.subsample_fourier(U_2_c, 2**k2)
             U_2_c = backend.ifft(U_2_hat)
             Y_2_list.append(U_2_c)
 
@@ -89,32 +102,40 @@ def jtfs_singlepath(U_0, backend, filters, log2_stride, average_local,
 
     # Zero-pad frequency domain
     phi, psis = filters_fr
-    pad_right = phi['N'] - n1_max
+    pad_right = phi["N"] - n1_max
     Y_2_pad = backend.pad_frequency(Y_2_T, pad_right)
 
     # Frequency scattering
     Y_2_hat = backend.cfft(Y_2_pad)
     psi = psis[n_fr]
-    j_fr = psi['j']
-    spin = np.sign(psi['xi'])
+    j_fr = psi["j"]
+    spin = np.sign(psi["xi"])
     k_fr = min(j_fr, log2_stride_fr) if average_local_fr else j_fr
-    Y_fr_hat = backend.cdgmm(Y_2_hat, psi['levels'][0])
-    Y_fr_sub = backend.subsample_fourier(Y_fr_hat, 2 ** k_fr)
+    Y_fr_hat = backend.cdgmm(Y_2_hat, psi["levels"][0])
+    Y_fr_sub = backend.subsample_fourier(Y_fr_hat, 2**k_fr)
     Y_fr_T = backend.ifft(Y_fr_sub)
     Y_fr = backend.swap_time_frequency(Y_fr_T)
 
-    return {'coef': Y_fr, 'n': (n2, n_fr), 'j': (-1, j2),
-        'n_fr': (n_fr,), 'j_fr': (j_fr,), 'spin': spin,
-        'n1_max': n1_max, 'n1_stride': (2**j_fr)}
+    return {
+        "coef": Y_fr,
+        "n": (n2, n_fr),
+        "j": (-1, j2),
+        "n_fr": (n_fr,),
+        "j_fr": (j_fr,),
+        "spin": spin,
+        "n1_max": n1_max,
+        "n1_stride": (2**j_fr),
+    }
 
 
-def jtfs_singlepath_average_and_format(path, backend, phi_f, log2_stride,
-        average, phi_fr_f, oversampling_fr, average_fr):
+def jtfs_singlepath_average_and_format(
+    path, backend, phi_f, log2_stride, average, phi_fr_f, oversampling_fr, average_fr
+):
 
     # "The phase of the integrand must be set to a constant. This
     # freedom in setting the stationary phase to an arbitrary constant
     # value suggests the existence of a gauge boson" — Glinsky
-    path['coef'] = backend.modulus(path['coef'])
+    path["coef"] = backend.modulus(path["coef"])
 
     # Temporal averaging. Switch cases:
     # 1. If averaging is global, no need for unpadding at all.
@@ -127,18 +148,17 @@ def jtfs_singlepath_average_and_format(path, backend, phi_f, log2_stride,
     #         average with phi
     # (for simplicity, we assume oversampling=0 in the rationale above,
     #  but the implementation below works for any value of oversampling)
-    if average == 'global':
+    if average == "global":
         # Case 1.
-        path['coef'] = backend.average_global(path['coef'])
-    elif average == 'local' and len(path['n']) > 1:
+        path["coef"] = backend.average_global(path["coef"])
+    elif average == "local" and len(path["n"]) > 1:
         # Case 2b.
         path = time_averaging(path, backend, phi_f, log2_stride)
 
     # Frequential averaging. NB. if spin==0, U_gen is already averaged.
     # Hence, we only average if spin!=0, i.e. psi_{n_fr} in path.
-    if average_fr and not path['spin'] == 0:
-        path = frequency_averaging(path, backend,
-            phi_fr_f, oversampling_fr, average_fr)
+    if average_fr and not path["spin"] == 0:
+        path = frequency_averaging(path, backend, phi_fr_f, oversampling_fr, average_fr)
 
     # Splitting and reshaping
-    return {**path, 'order': len(path['n'])}
+    return {**path, "order": len(path["n"])}

@@ -1,12 +1,12 @@
 import logging
 import os
 
-import yaml
 import torch as tr
+import yaml
 from tqdm import tqdm
 
-from experiments.paths import OUT_DIR, CONFIGS_DIR
-from experiments.scrapl_loss import SCRAPLLoss
+from scrapl.scrapl_loss import SCRAPLLoss
+from src.paths import OUT_DIR, CONFIGS_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

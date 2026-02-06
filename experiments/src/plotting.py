@@ -15,7 +15,7 @@ from torch import Tensor as T
 from torchaudio.transforms import Spectrogram, Fade
 from torchvision.transforms import ToTensor
 
-from experiments.paths import OUT_DIR
+from src.paths import OUT_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

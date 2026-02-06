@@ -12,8 +12,8 @@ from matplotlib import pyplot as plt
 from torch import Tensor as T
 from tqdm import tqdm
 
-from experiments.losses import AdaptiveSCRAPLLoss
-from experiments.paths import OUT_DIR, CONFIGS_DIR
+from src.losses import AdaptiveSCRAPLLoss
+from src.paths import OUT_DIR, CONFIGS_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

@@ -12,9 +12,9 @@ from matplotlib.ticker import (
     FixedLocator,
 )
 
-from experiments import util
-from experiments.paths import CONFIGS_DIR, DATA_DIR
-from experiments.scrapl_loss import SCRAPLLoss
+from scrapl.scrapl_loss import SCRAPLLoss
+from src import util
+from src.paths import CONFIGS_DIR, DATA_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

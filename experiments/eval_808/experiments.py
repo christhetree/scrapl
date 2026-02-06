@@ -2,7 +2,6 @@ import logging
 import os
 
 import torch as tr
-import torchaudio
 
 from eval_808.features import (
     FeatureCollection,

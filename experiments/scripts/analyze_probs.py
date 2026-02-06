@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import torch as tr
 
-from experiments.paths import DATA_DIR
+from src.paths import DATA_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

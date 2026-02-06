@@ -10,8 +10,8 @@ import pandas as pd
 from torch.utils.benchmark import Measurement
 from tqdm import tqdm
 
-from experiments import util
-from experiments.paths import CONFIGS_DIR, OUT_DIR
+from src import util
+from src.paths import CONFIGS_DIR, OUT_DIR
 
 from torch import Tensor as T, nn
 import torch as tr

@@ -8,8 +8,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import torch
 import yaml
 
-from experiments.cli import CustomLightningCLI
-from experiments.paths import CONFIGS_DIR
+from src.cli import CustomLightningCLI
+from src.paths import CONFIGS_DIR
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

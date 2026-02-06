@@ -5,16 +5,15 @@ import random
 from collections import defaultdict
 from typing import Optional, Dict
 
-import auraloss
 import numpy as np
 import torch as tr
 import yaml
 from torch import nn
 from tqdm import tqdm
 
-from experiments.losses import AdaptiveSCRAPLLoss, JTFSTLoss, ClapEmbeddingLoss
-from experiments.paths import CONFIGS_DIR, OUT_DIR
-from experiments.synths import ChirpTextureSynth
+from src.losses import AdaptiveSCRAPLLoss
+from src.paths import CONFIGS_DIR, OUT_DIR
+from src.synths import ChirpTextureSynth
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

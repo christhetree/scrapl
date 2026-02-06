@@ -13,10 +13,10 @@ from torch import Tensor as T
 from torch import nn
 from tqdm import tqdm
 
-from experiments import util
-from experiments.losses import JTFSTLoss, Scat1DLoss
-from experiments.paths import OUT_DIR, CONFIGS_DIR
-from experiments.scrapl_loss import SCRAPLLoss
+from src import util
+from src.losses import JTFSTLoss, Scat1DLoss
+from src.paths import OUT_DIR, CONFIGS_DIR
+from src.scrapl_loss import SCRAPLLoss
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

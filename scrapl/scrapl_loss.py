@@ -11,9 +11,8 @@ from hessian_eigenthings.operator import LambdaOperator
 from torch import Tensor as T
 from torch.nn import Parameter
 
-from experiments.paths import OUT_DIR
-from experiments.util import ReadOnlyTensorDict
-from scrapl.torch import TimeFrequencyScrapl
+from util import ReadOnlyTensorDict
+from single_path_jtfs import TimeFrequencyScrapl
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

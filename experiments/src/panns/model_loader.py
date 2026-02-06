@@ -10,7 +10,7 @@ from hypy_utils.downloader import download_file
 from torch import Tensor as T
 from torch import nn
 
-from experiments import panns
+from src import panns
 
 log = logging.getLogger(__name__)
 

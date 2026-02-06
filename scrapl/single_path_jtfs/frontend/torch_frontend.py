@@ -17,9 +17,9 @@ class TimeFrequencyScraplTorch(TimeFrequencyScraplBase, TimeFrequencyScatteringT
         Q_fr=1,
         F=None,
         stride_fr=None,
-        out_type='array',
-        format='joint',
-        backend='torch'
+        out_type="array",
+        format="joint",
+        backend="torch"
     ):
         ScatteringTorch.__init__(self)
         TimeFrequencyScraplBase.__init__(

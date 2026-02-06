@@ -7,7 +7,7 @@ from torch.autograd import Function
 import torch as tr
 from torch import Tensor as T
 
-from experiments.losses import SCRAPLLoss
+from scrapl.scrapl_loss import SCRAPLLoss
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
