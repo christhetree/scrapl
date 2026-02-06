@@ -16,7 +16,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="description" content="">
     <meta name="author" content="Anonymous">
-    <title>SCRAPL</title>
+    <title>SCRAPL: Scattering Transform with Random Paths for Machine Learning</title>
 
     <!-- Bootstrap core CSS -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
@@ -32,16 +32,24 @@
     <div class="row">
         <div class="col-lg-12">
             <br>
-            <h1 class="mt-5 mb-3"><b>SCRAPL: Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
+            <h1 class="mt-5 mb-3"><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
             <p class="lead">
-                Anonymous submission to ICLR 2026.
+                <a href="https://christhetr.ee/" target=”_blank”>Christopher Mitcheltree</a> <sup>1</sup>,
+                <a href="https://www.lostanlen.com/" target=”_blank”>Vincent Lostanlen</a> <sup>2</sup>,
+                <a href="https://www.qmul.ac.uk/eecs/people/profiles/benetosemmanouil.html" target=”_blank”>Emmanouil Benetos</a> <sup>1</sup>, and
+                <a href="https://mathieulagrange.github.io/" target=”_blank”>Mathieu Lagrange</a> <sup>2</sup>
+            </p>
+
+            <p class="lead">
+                <sup>1</sup> Centre for Digital Music, Queen Mary University of London, UK<br>
+                <sup>2</sup> Nantes Université, École Centrale Nantes, CNRS, LS2N, UMR 6004, France<br>
             </p>
 
             <div>
                 <a class="btn btn-outline-dark" href="docs/mitcheltree2026scrapl.pdf" target=”_blank” type="button">
                     <i class="bi bi-newspaper"></i> Paper
                 </a>
-                <a class="btn btn-outline-dark" href="https://github.com/christhetree/scrapl" target=”_blank” type="button">
+                <a class="btn btn-outline-dark" href="https://github.com/christhetree/scrapl/" target=”_blank” type="button">
                     <i class="bi bi-code-slash"></i> Code
                 </a>
             </div>
@@ -61,22 +69,38 @@
                 We implement SCRAPL for the joint time–frequency scattering transform (JTFS) which demodulates spectrotemporal patterns at multiple scales and rates, allowing a fine characterization of intermittent auditory textures.
                 We apply SCRAPL to differentiable digital signal processing (DDSP), specifically, unsupervised sound matching of a granular synthesizer and the Roland TR-808 drum machine.
                 We also propose an initialization heuristic based on importance sampling, which adapts SCRAPL to the perceptual content of the dataset, improving neural network convergence and evaluation performance.
-                We make our audio samples available and provide SCRAPL as a Python package.
+                We make our code and audio samples available and provide SCRAPL as a Python package.
             </p>
             <br>
             <img class="img-fluid w-100 mx-auto d-block" src="figs/relative_error_vs_computation.svg">
             <br>
             <br>
-            <p class="text-center">Figure 1: <em>Mean average error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. Both axes are rescaled by the performance of a supervised model with same number of parameters. Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.</em></p>
+            <p class="text-center">Figure 1: <em>Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. Both axes are rescaled by the performance of a supervised model with the same number of parameters. Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.</em></p>
         </div>
     </div>
 
     <div class="section">
-        <h2 class="">Experiment 3: Roland TR-303 Sound Matching</h2>
+        <h2>Citation</h2>
+        <hr>
+        <p>Accepted to the International Conference on Learning Representations (ICLR), Rio de Janeiro, Brazil, 23 - 27 April 2026.</p>
+        <div style="background-color: #e9ecef;">
+  <pre><code>
+  @inproceedings{mitcheltree2026scrapl,
+      title={{SCRAPL}: Scattering Transform with Random Paths for Machine Learning},
+      author={Christopher Mitcheltree and Vincent Lostanlen and Emmanouil Benetos and Mathieu Lagrange},
+      booktitle={Proceedings of the International Conference on Learning Representations (ICLR)},
+      year={2026}
+  }
+  </code></pre>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2 class="">Experiment 3: Roland TR-808 Sound Matching</h2>
         <hr>
         <div class="section mb-5">
             <p>
-                Below, we provide listening examples for aligned (<em>micro</em>, Table 1) and unaligned (<em>meso</em>, Table 2) unsupervised sound matching for a <a href="https://jordieshier.com/projects/nime2024/" target=”_blank”>DDSP synth implementation</a> of the Roland TR-808 drum machine.
+                Below, we provide listening examples for aligned (<em>micro</em>, Table 1) and unaligned (<em>meso</em>, Table 2) unsupervised sound matching for a <a href="https://jordieshier.com/projects/nime2024/" target=”_blank”>DDSP synth implementation</a> of the <a href="https://www.roland.com/global/promos/roland_tr-808/" target=”_blank”>Roland TR-808 Rhythm Composer</a> drum machine.
                 Please refer to Sections 4.4 and 5.3 of the paper for details.
                 <br><br>
                 There are four different drum types: snare drum (SD), bass drum (BD), tom (Tom), and hi-hat (HH).
@@ -589,6 +613,7 @@
     <hr>
     <footer>
         <p>
+            Send feedback and questions to <a href="https://christhetr.ee" target=”_blank”>Christopher Mitcheltree</a>.
             <br>Scroll to <a href="#">top</a>.
         </p>
         <p><br></p>
