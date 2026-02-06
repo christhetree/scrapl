@@ -1,4 +1,4 @@
-class_path: experiments.scrapl_loss.SCRAPLLoss
+class_path: scrapl.scrapl_loss.SCRAPLLoss
 init_args:
   shape: 44100
   J: 12

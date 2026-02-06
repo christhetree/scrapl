@@ -1,4 +1,4 @@
-class_path: experiments.losses.Scat1DLoss
+class_path: src.losses.Scat1DLoss
 init_args:
   shape: 32768
   J: 12

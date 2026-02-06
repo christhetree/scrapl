@@ -1,4 +1,4 @@
-class_path: experiments.synths.ChirpletSynth
+class_path: src.synths.ChirpletSynth
 init_args:
   sr: 8192
   n_samples: 32768

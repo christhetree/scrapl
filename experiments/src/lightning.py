@@ -16,7 +16,7 @@ from tqdm import tqdm
 from src import util
 from src.losses import JTFSTLoss, Scat1DLoss
 from src.paths import OUT_DIR, CONFIGS_DIR
-from src.scrapl_loss import SCRAPLLoss
+from scrapl.scrapl_loss import SCRAPLLoss
 
 logging.basicConfig()
 log = logging.getLogger(__name__)

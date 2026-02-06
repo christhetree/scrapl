@@ -15,7 +15,7 @@ trainer:
   accumulate_grad_batches: 1
 
 data:
-  class_path: experiments.data_modules.ThetaDSDataModule
+  class_path: src.data_modules.ThetaDSDataModule
   init_args:
     batch_size: 32
     num_workers: 4
@@ -27,7 +27,7 @@ data:
     use_unique_theta_in_val_test: true
 
 model:
-  class_path: experiments.lightning.SCRAPLLightingModule
+  class_path: src.lightning.SCRAPLLightingModule
   init_args:
     model: ../../models/spectral_2dcnn.yml
     synth: ../../synths/chirplet_8khz_2_am_hi_fm_hi.yml

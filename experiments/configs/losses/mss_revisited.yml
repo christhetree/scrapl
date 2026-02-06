@@ -1,4 +1,4 @@
-class_path: experiments.losses.LogMSSLoss
+class_path: src.losses.LogMSSLoss
 init_args:
   fft_sizes:
     - 67

@@ -1,4 +1,4 @@
-class_path: experiments.models.Spectral2DCNN
+class_path: src.models.Spectral2DCNN
 init_args:
   n_bins: 108
   n_frames: 173
