@@ -34,6 +34,7 @@ Jinja2==3.1.6
 joblib==1.5.3
 jsonargparse==4.46.0
 kiwisolver==1.4.9
+kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934
 lazy_loader==0.4
 librosa==0.10.2.post1
 lightning==2.6.1

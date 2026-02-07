@@ -1,0 +1,41 @@
+[project]
+name = "scrapl"
+version = "1.0.0"
+description = "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
+readme = "scrapl/README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Christopher Mitcheltree", email = "christhetree@gmail.com"},
+    {name = "Vincent Lostanlen", email = "vincent.lostanlen@ls2n.fr"},
+]
+license = { text = "MIT" }
+
+dependencies = [
+    "torch>=2.8.0,<3.0.0",
+    "kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934",
+    "hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04",
+]
+
+[project.urls]
+Website = "https://christhetree.github.io/scrapl/"
+Repository = "https://github.com/christhetree/scrapl/"
+"ICLR 2026 Paper" = "https://christhetree.github.io/scrapl/docs/mitcheltree2026scrapl.pdf"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+# Required since the scrapl package is not located in a src subdirectory.
+[tool.uv.build-backend]
+module-name = "scrapl"
+module-root = "."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "-v"  # verbose output
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

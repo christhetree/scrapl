@@ -23,3 +23,4 @@ typeshed-client==2.8.2
 uv==0.8.12
 wandb==0.21.1
 hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04
+kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934
