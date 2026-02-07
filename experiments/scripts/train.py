@@ -50,9 +50,6 @@ if __name__ == "__main__":
     # config_name = "train/texture/train_scrapl_pwa.yml"
     # config_name = "train/texture/train_scrapl_saga_pwa.yml"
     # config_name = "train/texture/train_scrapl_saga_pwa_warmup.yml"
-    # config_name = "train/texture/train_scrapl_saga_pwa__adaptive_n_batches_1_n_iter_20_param_agg_none.yml"   # min = 0.000101, max = 0.020284
-    # config_name = "train/texture/train_scrapl_saga_pwa__adaptive_n_batches_1_n_iter_20_param_agg_mean.yml"   # min = 0.000087, max = 0.019774
-    # config_name = "train/texture/train_scrapl_saga_pwa__adaptive_n_batches_1_n_iter_20_param_agg_max.yml"    # min = 0.000081, max = 0.020218
     config_name = "train/texture/train_scrapl_saga_pwa__adaptive_n_batches_10_n_iter_20_param_agg_none.yml"  # min = 0.000249, max = 0.025870
 
     # Chirplet

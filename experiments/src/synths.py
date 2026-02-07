@@ -278,6 +278,9 @@ class ChirpTextureSynth(nn.Module):
 
         # TODO: use only one generator, seems to be a PyTorch limitation
         self.rand_gen_cpu = tr.Generator(device="cpu")
+        self.rand_gen_mpu = None
+        if tr.backends.mps.is_available():
+            self.rand_gen_mpu = tr.Generator(device="mps")
         self.rand_gen_gpu = None
         if tr.cuda.is_available():
             self.rand_gen_gpu = tr.Generator(device="cuda")
@@ -285,6 +288,8 @@ class ChirpTextureSynth(nn.Module):
     def get_rand_gen(self, device: str) -> tr.Generator:
         if device == "cpu":
             return self.rand_gen_cpu
+        elif device == "mps":
+            return self.rand_gen_mpu
         else:
             return self.rand_gen_gpu
 

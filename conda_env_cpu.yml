@@ -21,8 +21,9 @@ dependencies:
     - pip-chill
     - pyloudnorm
     - scipy
-    - torch
+    - torch==2.8.0
     - torchaudio
+    - torchcodec
     - torchvision
     - tensorboard
     - uv
