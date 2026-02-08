@@ -1,3 +1,15 @@
+import os
+import sys
+
+_submodule_paths = [
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "../kymatio")),
+    os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../pytorch_hessian_eigenthings")
+    ),
+]
+for _submodule_path in _submodule_paths:
+    sys.path.append(_submodule_path)
+
 # Make sure that DeprecationWarning within this package always gets printed
 ### Snippet copied from sklearn.__init__
 import re

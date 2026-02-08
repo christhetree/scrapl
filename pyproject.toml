@@ -1,6 +1,6 @@
 [project]
 name = "scrapl"
-version = "1.0.0"
+version = "0.1.0"
 description = "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
 readme = "scrapl/README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,11 @@ license = { text = "MIT" }
 
 dependencies = [
     "torch>=2.8.0,<3.0.0",
-    "kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934",
-    "hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04",
+    "numpy>=0.14",
+    "scipy>=1.2.1",
+    "appdirs",
+    "configparser",
+    "packaging",
 ]
 
 [project.urls]
