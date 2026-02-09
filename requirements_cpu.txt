@@ -3,14 +3,12 @@ auraloss==0.4.0
 black==26.1.0
 docstring-parser==0.17.0
 einops==0.8.2
-hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04
 hypy-utils==1.0.29
 importlib-metadata==8.7.1
 jaraco-context==6.1.0
 jaraco-functools==4.4.0
 jaraco.text==4.0.0
 jsonargparse==4.46.0
-kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934
 lightning==2.6.1
 matplotlib==3.10.8
 msclap==1.3.4

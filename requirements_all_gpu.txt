@@ -25,7 +25,6 @@ future==1.0.0
 gitdb==4.0.12
 GitPython==3.1.45
 grpcio==1.76.0
-hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04
 hf-xet==1.2.0
 huggingface-hub==0.36.0
 hypy_utils==1.0.29
@@ -40,7 +39,6 @@ Jinja2==3.1.6
 joblib==1.5.2
 jsonargparse==4.40.2
 kiwisolver==1.4.9
-kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934
 lazy_loader==0.4
 librosa==0.10.2.post1
 lightning==2.5.3

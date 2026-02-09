@@ -3,12 +3,22 @@ name = "scrapl"
 version = "0.1.0"
 description = "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
 readme = "scrapl/README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 authors = [
     {name = "Christopher Mitcheltree", email = "christhetree@gmail.com"},
     {name = "Vincent Lostanlen", email = "vincent.lostanlen@ls2n.fr"},
 ]
 license = { text = "MIT" }
+keywords = [
+    "scattering transform",
+    "wavelets",
+    "stochastic optimization",
+    "ddsp",
+    "perceptual quality assessment",
+    "machine learning",
+    "pytorch",
+    "jtfs",
+]
 
 dependencies = [
     "torch>=2.8.0,<3.0.0",
@@ -22,7 +32,7 @@ dependencies = [
 [project.urls]
 Website = "https://christhetree.github.io/scrapl/"
 Repository = "https://github.com/christhetree/scrapl/"
-"ICLR 2026 Paper" = "https://christhetree.github.io/scrapl/docs/mitcheltree2026scrapl.pdf"
+"ICLR 2026 Paper" = "https://openreview.net/forum?id=RuYwbd5xYa"
 
 [build-system]
 requires = ["uv_build"]

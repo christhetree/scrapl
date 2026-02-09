@@ -24,7 +24,6 @@ fsspec==2026.2.0
 gitdb==4.0.12
 GitPython==3.1.46
 grpcio==1.78.0
-hessian_eigenthings @ git+https://github.com/noahgolmant/pytorch-hessian-eigenthings.git@dce2e54a19963b0dfa41b93f531fb7742d46ea04
 hf-xet==1.2.0
 huggingface_hub==0.36.2
 hypy_utils==1.0.29
@@ -34,13 +33,12 @@ Jinja2==3.1.6
 joblib==1.5.3
 jsonargparse==4.46.0
 kiwisolver==1.4.9
-kymatio @ git+https://github.com/christhetree/kymatio.git@702cfc0e002873de2b9ef83c9a0d3a831359e934
 lazy_loader==0.4
 librosa==0.10.2.post1
 lightning==2.6.1
 lightning-utilities==0.15.2
 llvmlite==0.46.0
-Markdown==3.10.1
+Markdown==3.10.2
 MarkupSafe==3.0.3
 matplotlib==3.10.8
 mpmath==1.3.0
@@ -54,7 +52,7 @@ numba==0.63.1
 numpy==1.26.4
 nvidia-ml-py==13.590.48
 nvitop==1.6.2
-packaging @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_packaging_1769093650/work
+packaging @ file:///opt/miniconda3/conda-bld/packaging_1761049079158/work
 pandas==2.3.3
 pathspec==1.0.4
 pillow==12.1.0
