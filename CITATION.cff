@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you find this project helpful for your own work, please consider citing it:"
+authors:
+  - family-names: "Mitcheltree"
+    given-names: "Christopher"
+  - family-names: "Lostanlen"
+    given-names: "Vincent"
+  - family-names: "Benetos"
+    given-names: "Emmanouil"
+  - family-names: "Lagrange"
+    given-names: "Mathieu"
+title: "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
+version: 0.1.0
+date-released: 2026-02-10
+url: "https://github.com/christhetree/scrapl"
+preferred-citation:
+  type: conference-paper
+  authors:
+    - family-names: "Mitcheltree"
+      given-names: "Christopher"
+    - family-names: "Lostanlen"
+      given-names: "Vincent"
+    - family-names: "Benetos"
+      given-names: "Emmanouil"
+    - family-names: "Lagrange"
+      given-names: "Mathieu"
+  title: "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
+  collection-title: "Proceedings of the International Conference on Learning Representations (ICLR)"
+  year: 2026
+  url: "https://openreview.net/forum?id=RuYwbd5xYa"
