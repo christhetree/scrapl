@@ -1,9 +1,11 @@
 <div align="center">
 <h1><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
+<p>
 <a href="https://christhetr.ee/" target=”_blank”>Christopher Mitcheltree</a>,
 <a href="https://www.lostanlen.com/" target=”_blank”>Vincent Lostanlen</a>,
 <a href="https://www.qmul.ac.uk/eecs/people/profiles/benetosemmanouil.html" target=”_blank”>Emmanouil Benetos</a>, and
 <a href="https://mathieulagrange.github.io/" target=”_blank”>Mathieu Lagrange</a>
+</p>
 
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
 [![Listening Samples](https://img.shields.io/badge/%F0%9F%94%8A%F0%9F%8E%B6-Listening_Samples-blue)](https://christhetree.github.io/scrapl/)
@@ -23,6 +25,13 @@ We apply SCRAPL to differentiable digital signal processing (DDSP), specifically
 We also propose an initialization heuristic based on importance sampling, which adapts SCRAPL to the perceptual content of the dataset, improving neural network convergence and evaluation performance.
 We make our code and audio samples available and provide SCRAPL as a Python package.
 <p>
+
+![image](docs/figs/relative_param_error_vs_computation.svg)
+
+_Figure1: Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. 
+Both axes are rescaled by the performance of a supervised model with the same number of parameters. 
+Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, 
+JTFS-based sound matching is evaluated only once._
 
 <h2>Citation</h2>
 <hr>
