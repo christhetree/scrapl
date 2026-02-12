@@ -47,40 +47,40 @@ class SCRAPLLoss(nn.Module):
         T: Optional[Union[str, int]] = None,
         F: Optional[Union[str, int]] = None,
         p: int = 2,
-        use_log1p: bool = False,
+        use_rho_log1p: bool = False,
         log1p_eps: float = 1e-3,  # TODO: what's a good default here?
         grad_mult: float = 1e8,
-        use_pwa: bool = True,
-        use_saga: bool = True,
+        use_p_adam: bool = True,
+        use_p_saga: bool = True,
         sample_all_paths_first: bool = False,
         n_theta: int = 1,
         min_prob_frac: float = 0.0,
         probs_path: Optional[str] = None,
         eps: float = 1e-12,
-        pwa_b1: float = 0.9,
-        pwa_b2: float = 0.999,
-        pwa_eps: float = 1e-8,
+        p_adam_b1: float = 0.9,
+        p_adam_b2: float = 0.999,
+        p_adam_eps: float = 1e-8,
     ):
         super().__init__()
         self.p = p
-        self.use_log1p = use_log1p
+        self.use_rho_log1p = use_rho_log1p
         self.log1p_eps = log1p_eps
         self.grad_mult = grad_mult
-        if use_pwa and not use_log1p:
+        if use_p_adam and not use_rho_log1p:
             assert (
                 grad_mult > 1.0
-            ), "Using PWA with no log1p requires a grad multiplier to avoid float precision errors"
-        self.use_pwa = use_pwa
-        self.use_saga = use_saga
+            ), "Using p_adam with no log1p requires a grad multiplier to avoid float precision errors"
+        self.use_p_adam = use_p_adam
+        self.use_p_saga = use_p_saga
         self.sample_all_paths_first = sample_all_paths_first
         assert n_theta >= 1
         self.n_theta = n_theta
         assert 0 <= min_prob_frac < 1.0
         self.min_prob_frac = min_prob_frac
         self.eps = eps
-        self.pwa_b1 = pwa_b1
-        self.pwa_b2 = pwa_b2
-        self.pwa_eps = pwa_eps
+        self.p_adam_b1 = p_adam_b1
+        self.p_adam_b2 = p_adam_b2
+        self.p_adam_eps = p_adam_eps
 
         # Path related setup
         self.jtfs = TimeFrequencyScrapl(
@@ -102,10 +102,10 @@ class SCRAPLLoss(nn.Module):
         log.info(
             f"SCRAPLLoss:\n"
             f"J={J}, Q1={Q1}, Q2={Q2}, Jfr={J_fr}, Qfr={Q_fr}, T={T}, F={F}\n"
-            f"use_log1p              = {use_log1p}, eps = {log1p_eps}\n"
+            f"use_rho_log1p          = {use_rho_log1p}, eps = {log1p_eps}\n"
             f"grad_mult              = {grad_mult}\n"
-            f"use_pwa                = {use_pwa}\n"
-            f"use_saga               = {use_saga}\n"
+            f"use_p_adam             = {use_p_adam}\n"
+            f"use_p_saga             = {use_p_saga}\n"
             f"sample_all_paths_first = {sample_all_paths_first}\n"
             f"n_theta                = {n_theta}\n"
             f"min_prob_frac          = {min_prob_frac}\n"
@@ -120,9 +120,9 @@ class SCRAPLLoss(nn.Module):
 
         # Grad related setup
         self.attached_params = None
-        self.pwa_m = {}
-        self.pwa_v = {}
-        self.pwa_t = defaultdict(lambda: defaultdict(int))
+        self.p_adam_m = {}
+        self.p_adam_v = {}
+        self.p_adam_t = defaultdict(lambda: defaultdict(int))
         self.scrapl_t = 0
         self.prev_path_grads = {}
         self.hook_handles = []
@@ -194,9 +194,9 @@ class SCRAPLLoss(nn.Module):
         self._check_probs()
 
     def _clear_grad_data(self) -> None:
-        self.pwa_m = {}
-        self.pwa_v = {}
-        self.pwa_t = defaultdict(lambda: defaultdict(int))
+        self.p_adam_m = {}
+        self.p_adam_v = {}
+        self.p_adam_t = defaultdict(lambda: defaultdict(int))
         self.scrapl_t = 0
         self.prev_path_grads = {}
         for handle in self.hook_handles:
@@ -257,20 +257,20 @@ class SCRAPLLoss(nn.Module):
     def attach_params(self, params: Iterable[T]) -> None:
         self._clear_grad_data()
         self.attached_params = list(params)
-        pwa_m = {}
-        pwa_v = {}
+        p_adam_m = {}
+        p_adam_v = {}
         prev_path_grads = {}
         for idx, p in enumerate(self.attached_params):
-            pwa_m[idx] = tr.zeros((self.n_paths, *p.shape))
-            pwa_v[idx] = tr.zeros((self.n_paths, *p.shape))
+            p_adam_m[idx] = tr.zeros((self.n_paths, *p.shape))
+            p_adam_v[idx] = tr.zeros((self.n_paths, *p.shape))
             prev_path_grads[idx] = tr.zeros((self.n_paths, *p.shape))
             handle = p.register_hook(functools.partial(self.grad_hook, param_idx=idx))
             self.hook_handles.append(handle)
-        del self.pwa_m
-        del self.pwa_v
+        del self.p_adam_m
+        del self.p_adam_v
         del self.prev_path_grads
-        self.register_module("pwa_m", ReadOnlyTensorDict(pwa_m, persistent=False))
-        self.register_module("pwa_v", ReadOnlyTensorDict(pwa_v, persistent=False))
+        self.register_module("p_adam_m", ReadOnlyTensorDict(p_adam_m, persistent=False))
+        self.register_module("p_adam_v", ReadOnlyTensorDict(p_adam_v, persistent=False))
         self.register_module(
             "prev_path_grads", ReadOnlyTensorDict(prev_path_grads, persistent=False)
         )
@@ -288,10 +288,10 @@ class SCRAPLLoss(nn.Module):
         path_idx = self.curr_path_idx
         curr_t = self.scrapl_t + 1
 
-        if self.use_pwa:
-            prev_m_s = self.pwa_m[param_idx]
-            prev_v_s = self.pwa_v[param_idx]
-            prev_t_s = self.pwa_t[param_idx]
+        if self.use_p_adam:
+            prev_m_s = self.p_adam_m[param_idx]
+            prev_v_s = self.p_adam_v[param_idx]
+            prev_t_s = self.p_adam_t[param_idx]
             prev_m = prev_m_s[path_idx]
             prev_v = prev_v_s[path_idx]
             prev_t = prev_t_s[path_idx]
@@ -304,15 +304,15 @@ class SCRAPLLoss(nn.Module):
                 prev_v,
                 t_norm,
                 prev_t_norm,
-                b1=self.pwa_b1,
-                b2=self.pwa_b2,
-                eps=self.pwa_eps,
+                b1=self.p_adam_b1,
+                b2=self.p_adam_b2,
+                eps=self.p_adam_eps,
             )
             prev_m_s[path_idx] = m
             prev_v_s[path_idx] = v
             prev_t_s[path_idx] = curr_t
 
-        if self.use_saga:
+        if self.use_p_saga:
             n_paths_seen = len(self.path_counts)
             # Calculate previous average grad
             prev_path_grads = self.prev_path_grads[param_idx]
@@ -355,11 +355,11 @@ class SCRAPLLoss(nn.Module):
         n2, n_fr = self.scrapl_keys[path_idx]
         Sx = self.jtfs.scattering_singlepath(x, n2, n_fr)
         Sx = Sx["coef"].squeeze(-1)
-        if self.use_log1p:
+        if self.use_rho_log1p:
             Sx = tr.log1p(Sx / self.log1p_eps)
         Sx_target = self.jtfs.scattering_singlepath(x_target, n2, n_fr)
         Sx_target = Sx_target["coef"].squeeze(-1)
-        if self.use_log1p:
+        if self.use_rho_log1p:
             Sx_target = tr.log1p(Sx_target / self.log1p_eps)
         diff = Sx_target - Sx
         dist = tr.linalg.vector_norm(diff, ord=self.p, dim=(-2, -1))

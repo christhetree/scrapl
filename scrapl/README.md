@@ -75,10 +75,10 @@ Console output:
 ```text
 INFO:scrapl.scrapl_loss:SCRAPLLoss:
 J=12, Q1=8, Q2=2, Jfr=3, Qfr=2, T=None, F=None
-use_log1p              = False, eps = 0.001
+use_rho_log1p          = False, eps = 0.001
 grad_mult              = 100000000.0
-use_pwa                = True
-use_saga               = True
+use_p_adam             = True
+use_p_saga             = True
 sample_all_paths_first = False
 n_theta                = 1
 min_prob_frac          = 0.0
@@ -231,10 +231,10 @@ Console output:
 ```text
 INFO:scrapl.scrapl_loss:SCRAPLLoss:
 J=3, Q1=1, Q2=1, Jfr=2, Qfr=1, T=None, F=None
-use_log1p              = False, eps = 0.001
+use_rho_log1p          = False, eps = 0.001
 grad_mult              = 100000000.0
-use_pwa                = True
-use_saga               = True
+use_p_adam             = True
+use_p_saga             = True
 sample_all_paths_first = False
 n_theta                = 3
 min_prob_frac          = 0.0

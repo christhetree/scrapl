@@ -177,11 +177,11 @@ class SCRAPLLightingModule(pl.LightningModule):
 
     def on_train_start(self) -> None:
         try:
-            if self.loss_func.use_pwa:
+            if self.loss_func.use_p_adam:
                 assert (
                     self.trainer.accumulate_grad_batches == 1
                 ), "Pathwise ADAM does not support gradient accumulation"
-            if self.loss_func.use_saga:
+            if self.loss_func.use_p_saga:
                 assert (
                     self.trainer.accumulate_grad_batches == 1
                 ), "SAGA does not support gradient accumulation"
