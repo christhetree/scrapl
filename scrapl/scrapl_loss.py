@@ -119,7 +119,7 @@ class SCRAPLLoss(nn.Module):
         self.unsampled_paths = list(range(self.n_paths))
 
         # Grad related setup
-        self.attached_params = None
+        self.attached_params = []
         self.p_adam_m = {}
         self.p_adam_v = {}
         self.p_adam_t = defaultdict(lambda: defaultdict(int))
@@ -194,15 +194,18 @@ class SCRAPLLoss(nn.Module):
         self._check_probs()
 
     def _clear_grad_data(self) -> None:
+        del self.p_adam_m
         self.p_adam_m = {}
+        del self.p_adam_v
         self.p_adam_v = {}
         self.p_adam_t = defaultdict(lambda: defaultdict(int))
         self.scrapl_t = 0
+        del self.prev_path_grads
         self.prev_path_grads = {}
         for handle in self.hook_handles:
             handle.remove()
         self.hook_handles = []
-        self.attached_params = None
+        self.attached_params = []
 
     def clear(self) -> None:
         # Path related setup
@@ -255,17 +258,20 @@ class SCRAPLLoss(nn.Module):
         super().load_state_dict(state_dict, *args, **kwargs)
 
     def attach_params(self, params: Iterable[T]) -> None:
+        n_prev_attached_params = len(self.attached_params)
         self._clear_grad_data()
         self.attached_params = list(params)
         p_adam_m = {}
         p_adam_v = {}
         prev_path_grads = {}
+        total_n_weights = 0
         for idx, p in enumerate(self.attached_params):
             p_adam_m[idx] = tr.zeros((self.n_paths, *p.shape))
             p_adam_v[idx] = tr.zeros((self.n_paths, *p.shape))
             prev_path_grads[idx] = tr.zeros((self.n_paths, *p.shape))
             handle = p.register_hook(functools.partial(self.grad_hook, param_idx=idx))
             self.hook_handles.append(handle)
+            total_n_weights += p.numel()
         del self.p_adam_m
         del self.p_adam_v
         del self.prev_path_grads
@@ -274,7 +280,13 @@ class SCRAPLLoss(nn.Module):
         self.register_module(
             "prev_path_grads", ReadOnlyTensorDict(prev_path_grads, persistent=False)
         )
-        log.info(f"Attached {len(self.prev_path_grads)} parameter tensors")
+        if not self.attached_params:
+            log.info(f"Detached {n_prev_attached_params} parameter tensors")
+        else:
+            log.info(
+                f"Attached {len(self.prev_path_grads)} parameter tensors "
+                f"({total_n_weights} weights)"
+            )
 
     def grad_hook(self, grad: T, param_idx: int) -> T:
         # TODO: check if this works
@@ -393,6 +405,13 @@ class SCRAPLLoss(nn.Module):
         if self.training:  # TODO: check if this works
             self.path_counts[path_idx] += 1
             self.scrapl_t += 1
+            if self.grad_mult != 1.0 or self.use_p_adam or self.use_p_saga:
+                if not self.attached_params:
+                    log.warning(
+                        f"Parameters are not attached, but grad_mult "
+                        f"({self.grad_mult}), use_p_adam ({self.use_p_adam}), or "
+                        f"use_p_saga ({self.use_p_saga}) are enabled."
+                    )
         return dist
 
     # Update prob methods ==============================================================
@@ -737,9 +756,7 @@ class SCRAPLLoss(nn.Module):
         assert all(
             not p.grad for p in params
         ), "params must have no previous gradients before warmup"
-        assert (
-            self.attached_params is None
-        ), "Parameters cannot be attached during warmup!"
+        assert not self.attached_params, "Parameters cannot be attached during warmup"
         assert theta_fn_kwargs, "theta_fn_kwargs must not be empty"
         if synth_fn_kwargs is not None:
             assert len(synth_fn_kwargs) == len(theta_fn_kwargs), (

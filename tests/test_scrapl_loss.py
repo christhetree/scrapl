@@ -56,6 +56,37 @@ def test_scrapl_loss() -> None:
     scrapl_loss.load_state_dict(state_dict)
     print(f"Path sampling statistics (loaded): {scrapl_loss.path_counts}")
 
+    from torch import nn
+
+    # Toy example model
+    model = nn.Sequential(
+        nn.Linear(in_features=48000, out_features=8),
+        nn.PReLU(),
+        nn.Linear(in_features=8, out_features=48000),
+        nn.Tanh(),
+    )
+
+    # Attach the learnable weights of the model to the SCRAPLLoss instance
+    # for P-Adam and P-SAGA
+    scrapl_loss.attach_params(model.parameters())
+
+    # Since we are using P-Adam and / or P-SAGA, we should use vanilla SGD with no
+    # momentum and optional weight decay as the downstream optimizer
+    from torch.optim import SGD
+    sgd_optimizer = SGD(model.parameters(), lr=1e-4, weight_decay=0.01)
+
+    # Example forward and backward step with P-Adam and P-SAGA now active
+    sgd_optimizer.zero_grad()
+    x_hat = model(x)
+    loss = scrapl_loss(x_hat, x_target)
+    loss.backward()
+    # Even though vanilla SGD is called here, the gradients of the model parameters
+    # have been modified by P-Adam and P-SAGA under the hood during the backward pass
+    sgd_optimizer.step()
+
+    # To detach parameters (generally not necessary), simply attach an empty list
+    scrapl_loss.attach_params([])
+
 
 def test_scrapl_loss_warmup() -> None:
     import torch as tr
@@ -175,5 +206,5 @@ def test_scrapl_loss_warmup() -> None:
 
 
 if __name__ == "__main__":
-    # test_scrapl_loss()
-    test_scrapl_loss_warmup()
+    test_scrapl_loss()
+    # test_scrapl_loss_warmup()

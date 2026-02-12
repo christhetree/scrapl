@@ -89,11 +89,11 @@ unif_prob              = 0.00317460
 Calculating the loss for two signals: 
 
 ```python 
-import torch
+import torch as tr
 
 # Create two random tensors of shape (batch_size, num_channels, signal_length)
-x = torch.randn(4, 1, 48000) # Example input tensor 
-x_target = torch.randn(4, 1, 48000) # Example target tensor 
+x = tr.randn(4, 1, 48000) # Example input tensor 
+x_target = tr.randn(4, 1, 48000) # Example target tensor 
 # Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
 # the loss value will be different each time `scrapl_loss()` is called.
 loss = scrapl_loss(x, x_target)
@@ -140,6 +140,52 @@ Most recently sampled path index (random seed): 211
 Path sampling statistics (original): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
 Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
 Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+```
+
+### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
+
+$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`. 
+However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA to have any effect.
+When $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
+
+```python
+from torch import nn
+
+# Toy example model
+model = nn.Sequential(
+    nn.Linear(in_features=48000, out_features=8),
+    nn.PReLU(),
+    nn.Linear(in_features=8, out_features=48000),
+    nn.Tanh(),
+)
+
+# Attach the learnable weights of the model to the SCRAPLLoss instance
+# for P-Adam and P-SAGA
+scrapl_loss.attach_params(model.parameters())
+
+# Since we are using P-Adam and / or P-SAGA, we should use vanilla SGD with no
+# momentum and optional weight decay as the downstream optimizer
+from torch.optim import SGD
+sgd_optimizer = SGD(model.parameters(), lr=1e-4, weight_decay=0.01)
+
+# Example forward and backward step with P-Adam and P-SAGA now active
+sgd_optimizer.zero_grad()
+x_hat = model(x)
+loss = scrapl_loss(x_hat, x_target)
+loss.backward()
+# Even though vanilla SGD is called here, the gradients of the model parameters
+# have been modified by P-Adam and P-SAGA under the hood during the backward pass
+sgd_optimizer.step()
+
+# To detach parameters (generally not necessary), simply attach an empty list
+scrapl_loss.attach_params([])
+```
+
+Console output:
+
+```text
+INFO:scrapl.scrapl_loss:Attached 5 parameter tensors (816009 weights)
+INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 ```
 
 ### Importance Sampling ($\theta$-IS) Warmup
