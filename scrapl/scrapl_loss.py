@@ -176,6 +176,23 @@ class SCRAPLLoss(nn.Module):
         self.loaded_probs_path = probs_path
         self._check_probs()
 
+    def load_probs_from_warmup_dir(
+        self, warmup_dir: str, agg: Literal["none", "mean", "max", "med"] = "none"
+    ) -> None:
+        assert os.path.isdir(warmup_dir)
+        self.clear()
+        for path_idx in range(self.n_paths):
+            vals_path = os.path.join(warmup_dir, f"vals_{path_idx}.pt")
+            if not os.path.isfile(vals_path):
+                log.warning(
+                    f"Warmup vals for path index {path_idx} do not exist, skipping"
+                )
+                continue
+            vals = tr.load(vals_path)
+            self._aggregate_vals_and_update_probs(vals, path_idx, agg=agg)
+        self.loaded_probs_path = warmup_dir
+        self._check_probs()
+
     def _clear_grad_data(self) -> None:
         self.pwa_m = {}
         self.pwa_v = {}
@@ -198,8 +215,9 @@ class SCRAPLLoss(nn.Module):
         self.updated_path_indices.clear()
         self.all_log_vals.fill_(self.log_eps)
         self.all_log_probs.fill_(self.log_unif_prob)
+        self._recompute_probs()
+        self.loaded_probs_path = None
         log.info(f"Cleared state")
-        self._check_probs()
 
     def state_dict(self, *args, **kwargs) -> Dict[str, T]:
         # TODO: support resuming training with grad hooks
@@ -368,7 +386,7 @@ class SCRAPLLoss(nn.Module):
             log.debug(f"Using specified path_idx = {path_idx}")
             assert 0 <= path_idx < self.n_paths
             if seed is not None:
-                log.warning( f"seed is ignored when path_idx is specified" )
+                log.warning(f"seed is ignored when path_idx is specified")
         dist, _, _ = self.calc_dist(x, x_target, path_idx)
 
         self.curr_path_idx = path_idx
@@ -677,6 +695,30 @@ class SCRAPLLoss(nn.Module):
         theta_eigs = tr.cat(theta_eigs, dim=0)
         return theta_eigs
 
+    def _aggregate_vals_and_update_probs(
+        self,
+        vals: T,
+        path_idx: int,
+        agg: Literal["none", "mean", "max", "med"] = "none",
+    ) -> None:
+        assert vals.ndim == 2
+        assert vals.size(1) == self.n_theta
+        if agg == "none":
+            assert vals.size(0) == 1
+            vals = vals[0]
+        elif agg == "mean":
+            vals = vals.mean(dim=0)
+        elif agg == "max":
+            vals = vals.max(dim=0).values
+        elif agg == "med":
+            vals = vals.median(dim=0).values
+        else:
+            raise ValueError(f"Invalid agg = {agg}")
+        # Update the probs for each theta
+        for theta_idx in range(self.n_theta):
+            val = vals[theta_idx]
+            self.update_prob(path_idx, val, theta_idx)
+
     def warmup_lc_hvp(
         self,
         theta_fn: Callable[..., T],
@@ -684,11 +726,17 @@ class SCRAPLLoss(nn.Module):
         theta_fn_kwargs: List[Dict[str, Any]],
         params: List[Parameter],
         synth_fn_kwargs: Optional[List[Dict[str, Any]]] = None,
+        start_path_idx: int = 0,
+        end_path_idx: Optional[int] = None,
+        save_dir: Optional[str] = "scrapl_warmup",
         n_iter: int = 20,
         agg: Literal["none", "mean", "max", "med"] = "none",
         force_multibatch: bool = False,
     ) -> None:
         assert params, "params must not be empty"
+        assert all(
+            not p.grad for p in params
+        ), "params must have no previous gradients before warmup"
         assert (
             self.attached_params is None
         ), "Parameters cannot be attached during warmup!"
@@ -698,6 +746,11 @@ class SCRAPLLoss(nn.Module):
                 f"len(theta_fn_kwargs) ({len(theta_fn_kwargs)}) != "
                 f"len(synth_fn_kwargs) ({len(synth_fn_kwargs)})"
             )
+        if end_path_idx is None:
+            end_path_idx = self.n_paths
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+
         # Check determinism
         theta_fn_kwargs_batch = theta_fn_kwargs[0]
         synth_fn_kwargs_batch = {}
@@ -727,7 +780,7 @@ class SCRAPLLoss(nn.Module):
         else:
             param_groups = [[p] for p in params]
         # Compute the theta LCs for each path
-        for path_idx in range(self.n_paths):
+        for path_idx in range(start_path_idx, end_path_idx):
             vals = []
             for param_group in param_groups:
                 curr_vals = calc_theta_eigs_fn(
@@ -746,27 +799,28 @@ class SCRAPLLoss(nn.Module):
             # Aggregate the theta LCs across all params
             vals = tr.stack(vals, dim=0)
 
-            # save_dir = os.path.join(OUT_DIR, "warmup_micro_log1p")
-            # # save_dir = os.path.join(OUT_DIR, "warmup_meso_log1p")
-            # os.makedirs(save_dir, exist_ok=True)
-            # save_path = os.path.join(save_dir, f"vals_{path_idx}.pt")
-            # tr.save(vals.detach().cpu(), save_path)
+            # Save intermediate results for parallel computation
+            if save_dir is not None:
+                save_path = os.path.abspath(
+                    os.path.join(save_dir, f"vals_{path_idx}.pt")
+                )
+                assert not os.path.isfile(
+                    save_path
+                ), f"save_path {save_path} already exists"
+                tr.save(vals.detach().cpu(), save_path)
 
-            if agg == "none":
-                assert vals.size(0) == 1
-                vals = vals[0]
-            elif agg == "mean":
-                vals = vals.mean(dim=0)
-            elif agg == "max":
-                vals = vals.max(dim=0).values
-            elif agg == "med":
-                vals = vals.median(dim=0).values
-            else:
-                raise ValueError(f"Invalid agg = {agg}")
-            # Update the probs for each theta
-            for theta_idx in range(self.n_theta):
-                val = vals[theta_idx]
-                self.update_prob(path_idx, val, theta_idx)
+            # Update the sampling probs based on the theta LCs
+            self._aggregate_vals_and_update_probs(vals, path_idx, agg=agg)
+
+        # Only save the final probs if we have completed the warmup for all paths
+        if (
+            save_dir is not None
+            and start_path_idx == 0
+            and end_path_idx == self.n_paths
+        ):
+            save_path = os.path.abspath(os.path.join(save_dir, f"probs.pt"))
+            log.info(f"Saving warmup SCRAPL sampling probabilities to {save_path}")
+            tr.save(self.probs.cpu(), save_path)
 
     # Static methods ===================================================================
     @staticmethod

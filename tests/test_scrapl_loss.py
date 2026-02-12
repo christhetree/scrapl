@@ -11,24 +11,27 @@ def test_scrapl_loss() -> None:
     # Initialize SCRAPLLoss with the minimum required hyperparameters
     scrapl_loss = SCRAPLLoss(
         shape=48000,  # Length of x and x_target in samples
-        J=12,         # Number of octaves (1st order temporal filters)
-        Q1=8,         # Filters per octave (1st order temporal filters)
-        Q2=2,         # Filters per octave (2nd order temporal filters)
-        J_fr=3,       # Number of octaves (2nd order frequential filters)
-        Q_fr=2,       # Filters per octave (2nd order frequential filters)
+        J=12,  # Number of octaves (1st order temporal filters)
+        Q1=8,  # Filters per octave (1st order temporal filters)
+        Q2=2,  # Filters per octave (2nd order temporal filters)
+        J_fr=3,  # Number of octaves (2nd order frequential filters)
+        Q_fr=2,  # Filters per octave (2nd order frequential filters)
     )
 
     # Import torch and make x and x_target
     import torch as tr
-    x = tr.rand((4, 1, 48000))        # Batch of 4 mono audio samples
-    x_target = tr.rand((4, 1, 48000)) # Batch of 4 mono audio samples
+
+    x = tr.rand((4, 1, 48000))  # Batch of 4 mono audio samples
+    x_target = tr.rand((4, 1, 48000))  # Batch of 4 mono audio samples
 
     loss = scrapl_loss(x, x_target)
     print(f"SCRAPLLoss: {loss.item()}")
 
     print(f"Number of scattering paths: {scrapl_loss.n_paths}")
     print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
-    print(f"Most recently sampled path index (prev. example): {scrapl_loss.curr_path_idx}")
+    print(
+        f"Most recently sampled path index (prev. example): {scrapl_loss.curr_path_idx}"
+    )
 
     # Calculate the loss for a specific path index
     loss = scrapl_loss(x, x_target, path_idx=8)
@@ -37,7 +40,9 @@ def test_scrapl_loss() -> None:
     # Calculate the loss with a random seed for deterministic path sampling
     # (this will sample the same path index every time)
     loss = scrapl_loss(x, x_target, seed=42)
-    print(f"Most recently sampled path index (random seed): {scrapl_loss.curr_path_idx}")
+    print(
+        f"Most recently sampled path index (random seed): {scrapl_loss.curr_path_idx}"
+    )
     print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
 
     # Get the state dictionary of the SCRAPLLoss instance
@@ -53,56 +58,97 @@ def test_scrapl_loss() -> None:
 
 
 def test_scrapl_loss_warmup() -> None:
+    import torch as tr
+    from scrapl import SCRAPLLoss
+
     # Setup
     tr.set_printoptions(precision=4, sci_mode=False)
-    tr.manual_seed(0)
-    bs = 2
-    n_samples = 32768
+    tr.manual_seed(42)
+    bs = 4
+    n_ch = 1
+    n_samples = 8096
+    # Number of parameters output by the encoder and input to the decoder (synth)
     n_theta = 3
+    # Number of batches to use for warmup; when possible, one large batch filling all
+    # available GPU memory is more efficient than many smaller batches
+    n_batches = 1
 
-    model = nn.Sequential(
+    # Provide a neural network encoder that outputs `n_theta` parameters
+    encoder = nn.Sequential(
         nn.Linear(n_samples, n_theta),
         nn.PReLU(),
         nn.Linear(n_theta, n_theta),
         nn.Sigmoid(),
     )
-    model = model
-    synth = nn.Sequential(
+    # Make the encoder forward call functional (stateless)
+    theta_fn = lambda x: encoder(x.squeeze(1))
+
+    # Provide a differentiable decoder (synth) that takes as input `n_theta` parameters
+    decoder = nn.Sequential(
         nn.Linear(n_theta, n_theta),
         nn.PReLU(),
         nn.Linear(n_theta, n_samples),
         nn.Tanh(),
     )
-    synth = synth
-    loss_fn = nn.MSELoss()
-    x_1 = tr.rand((bs, n_samples))
-    x_2 = tr.rand((bs, n_samples))
-    x_3 = tr.rand((bs, n_samples))
+    # Make the decoder forward call functional (stateless) and ensure it outputs the
+    # correct shape for the SCRAPLLoss (bs, n_ch, n_samples)
+    synth_fn = lambda theta: decoder(theta).unsqueeze(1)
 
-    params = [p for p in model.parameters()]
-    assert all(not p.grad for p in params)
+    # Create a list of dictionaries with batches of input data for `theta_fn`;
+    # typically this would be gathered from a dataloader
+    theta_is_batches = [tr.rand((bs, n_ch, n_samples)) for _ in range(n_batches)]
+    theta_fn_kwargs = [{"x": batch} for batch in theta_is_batches]
 
-    scrapl = SCRAPLLoss(
+    # Get the trainable weights of the encoder to pass to the warmup function
+    params = [p for p in encoder.parameters()]
+
+    # Initialize SCRAPLLoss with the minimum required hyperparameters and `n_theta`
+    scrapl_loss = SCRAPLLoss(
         shape=n_samples,
-        J=12,
-        Q1=8,
-        Q2=2,
-        J_fr=3,
-        Q_fr=2,
+        J=3,
+        Q1=1,
+        Q2=1,
+        J_fr=2,
+        Q_fr=1,
         n_theta=n_theta,
-        sample_all_paths_first=False,
     )
-    # TODO: Check whether probs are loaded in ckpt or need to be in buffer
-    # scrapl.attach_params(params)
-    theta_fn = lambda x: model(x.squeeze(1))
-    synth_fn = lambda theta: synth(theta).unsqueeze(1)
+    # We see that at initialization, all path sampling probabilities are uniform
+    print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
+    print(
+        f"[min, max] path sampling probabilities (before warmup): "
+        f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+    )
 
-    theta_fn_kwargs = [
-        {"x": x_1.unsqueeze(1)},
-        # {"x": x_1.unsqueeze(1)},
-        # {"x": x_2.unsqueeze(1)},
-        # {"x": x_3.unsqueeze(1)},
-    ]
+    # The encoder and decoder (synth) must be deterministic during warmup,
+    # but can be non-deterministic otherwise
+    scrapl_loss.check_is_deterministic(theta_fn, theta_fn_kwargs[0], synth_fn)
+
+    # Run the warmup. This can be parallelized across paths by specifying different
+    # `start_path_idx` and `end_path_idx` subsets on multiple devices.
+    scrapl_loss.warmup_lc_hvp(
+        theta_fn=theta_fn,
+        synth_fn=synth_fn,
+        theta_fn_kwargs=theta_fn_kwargs,
+        params=params,
+    )
+    # We see that after warmup, the path sampling probabilities are no longer uniform
+    print(
+        f"[min, max] path sampling probabilities (after warmup): "
+        f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+    )
+
+    scrapl_loss.clear()
+    print(
+        f"[min, max] path sampling probabilities: "
+        f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+    )
+
+    scrapl_loss.load_probs_from_warmup_dir("scrapl_warmup", agg="mean")
+    print(
+        f"[min, max] path sampling probabilities: "
+        f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+    )
+
     # scrapl.warmup_lc_hess_multibatch(
     #     theta_fn=theta_fn,
     #     synth_fn=synth_fn,
@@ -118,17 +164,6 @@ def test_scrapl_loss_warmup() -> None:
     #     params=params,
     #     n_iter=2,
     # )
-    scrapl.warmup_lc_hvp(
-        theta_fn=theta_fn,
-        synth_fn=synth_fn,
-        theta_fn_kwargs=theta_fn_kwargs,
-        params=params,
-        n_iter=20,
-        agg="none",
-        # agg="mean",
-        force_multibatch=False,
-        # force_multibatch=True,
-    )
 
     # INFO:__main__:theta_eigs = tensor([0.0039, 0.0011, 0.0081])
     # INFO:__main__:theta_eigs = tensor([0.0079, 0.0023, 0.0161])
@@ -140,6 +175,5 @@ def test_scrapl_loss_warmup() -> None:
 
 
 if __name__ == "__main__":
-    test_scrapl_loss()
-
     # test_scrapl_loss()
+    test_scrapl_loss_warmup()

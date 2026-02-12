@@ -142,6 +142,128 @@ Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
 Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
 ```
 
+### Importance Sampling ($\theta$-IS) Warmup
+
+
+```python
+import torch as tr
+from scrapl import SCRAPLLoss
+
+# Setup
+tr.set_printoptions(precision=4, sci_mode=False)
+tr.manual_seed(42)
+bs = 4
+n_ch = 1
+n_samples = 8096
+# Number of parameters output by the encoder and input to the decoder (synth)
+n_theta = 3
+# Number of batches to use for warmup; when possible, one large batch filling all
+# available GPU memory is more efficient than many smaller batches
+n_batches = 1
+
+# Provide a neural network encoder that outputs `n_theta` parameters
+encoder = nn.Sequential(
+    nn.Linear(n_samples, n_theta),
+    nn.PReLU(),
+    nn.Linear(n_theta, n_theta),
+    nn.Sigmoid(),
+)
+# Make the encoder forward call functional (stateless)
+theta_fn = lambda x: encoder(x.squeeze(1))
+
+# Provide a differentiable decoder (synth) that takes as input `n_theta` parameters
+decoder = nn.Sequential(
+    nn.Linear(n_theta, n_theta),
+    nn.PReLU(),
+    nn.Linear(n_theta, n_samples),
+    nn.Tanh(),
+)
+# Make the decoder forward call functional (stateless) and ensure it outputs the
+# correct shape for the SCRAPLLoss (bs, n_ch, n_samples)
+synth_fn = lambda theta: decoder(theta).unsqueeze(1)
+
+# Create a list of dictionaries with batches of input data for `theta_fn`;
+# typically this would be gathered from a dataloader
+theta_is_batches = [tr.rand((bs, n_ch, n_samples)) for _ in range(n_batches)]
+theta_fn_kwargs = [{"x": batch} for batch in theta_is_batches]
+
+# Get the trainable weights of the encoder to pass to the warmup function
+params = [p for p in encoder.parameters()]
+
+# Initialize SCRAPLLoss with the minimum required hyperparameters and `n_theta`
+scrapl_loss = SCRAPLLoss(
+    shape=n_samples,
+    J=3,
+    Q1=1,
+    Q2=1,
+    J_fr=2,
+    Q_fr=1,
+    n_theta=n_theta,
+)
+# We see that at initialization, all path sampling probabilities are uniform
+print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
+print(
+    f"[min, max] path sampling probabilities (before warmup): "
+    f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+)
+
+# The encoder and decoder (synth) must be deterministic during warmup,
+# but can be non-deterministic otherwise
+scrapl_loss.check_is_deterministic(theta_fn, theta_fn_kwargs[0], synth_fn)
+
+# Run the warmup. This can be parallelized across paths by specifying different
+# `start_path_idx` and `end_path_idx` subsets on multiple devices.
+scrapl_loss.warmup_lc_hvp(
+    theta_fn=theta_fn,
+    synth_fn=synth_fn,
+    theta_fn_kwargs=theta_fn_kwargs,
+    params=params,
+)
+# We see that after warmup, the path sampling probabilities are no longer uniform
+print(
+    f"[min, max] path sampling probabilities (after warmup): "
+    f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
+)
+```
+
+Console output:
+
+```text
+INFO:scrapl.scrapl_loss:SCRAPLLoss:
+J=3, Q1=1, Q2=1, Jfr=2, Qfr=1, T=None, F=None
+use_log1p              = False, eps = 0.001
+grad_mult              = 100000000.0
+use_pwa                = True
+use_saga               = True
+sample_all_paths_first = False
+n_theta                = 3
+min_prob_frac          = 0.0
+number of SCRAPL paths = 7
+unif_prob              = 0.14285714
+
+Uniform path sampling probability: 0.142857
+[min, max] path sampling probabilities (before warmup): [0.142857, 0.142857]
+
+INFO:scrapl.scrapl_loss:Starting warmup_lc_hvp with agg = none for 5 parameter(s) and 1 batch(es), 20 iter (multibatch = False)
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 0, curr_vals = tensor([0.9898, 0.1256, 0.2016])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 1, curr_vals = tensor([1.0082, 0.1349, 0.1406])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 2, curr_vals = tensor([0.9389, 0.0788, 0.1565])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 3, curr_vals = tensor([0.9059, 0.1199, 0.1678])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 4, curr_vals = tensor([1.0138, 0.1352, 0.1418])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 5, curr_vals = tensor([0.9248, 0.0741, 0.1556])
+ [=============================================================>...]   20/20 
+INFO:scrapl.scrapl_loss:path_idx = 6, curr_vals = tensor([0.8879, 0.1157, 0.1654])
+INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to scrapl_warmup/probs.pt
+
+[min, max] path sampling probabilities (after warmup): [0.123653, 0.162354]
+```
+
 
 ## Hyperparameters
 
