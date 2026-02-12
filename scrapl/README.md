@@ -2,14 +2,14 @@
 <h1><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
 
 [![Release](https://img.shields.io/badge/PyPI-v0.1.0-green)](https://pypi.org/project/scrapl/)
-[![License](https://img.shields.io/badge/License-MIT-blue)](https://opensource.org/license/mit)
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
 [![Listening Samples](https://img.shields.io/badge/%F0%9F%94%8A%F0%9F%8E%B6-Listening_Samples-blue)](https://christhetree.github.io/scrapl/)
+[![License](https://img.shields.io/badge/License-MIT-blue)](https://opensource.org/license/mit)
 </div>
 
 `scrapl` is a Python package for efficient evaluation of multivariable scattering transforms, specifically designed for use as a differentiable loss function in machine learning applications and perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing. 
 It implements the "Scattering Transform with Random Paths for Machine Learning" (SCRAPL) algorithm, which accelerates gradient-based optimization of neural networks with scattering transforms by stochastically sampling scattering paths to approximate the full transform's gradient.
-This typically reduces the computational and memory costs by one to three orders of magnitude. 
+This reduces the computational and memory costs by one to three orders of magnitude. 
 SCRAPL also leverages specialized stochastic optimization techniques ($\mathcal{P}$-Adam, $\mathcal{P}$-SAGA) and an architecture-informed importance sampling heuristic ($\theta$-IS) to stabilize gradients and improve convergence.
 For more details, please see the [ICLR 2026 paper](https://openreview.net/forum?id=RuYwbd5xYa).
 
@@ -19,11 +19,18 @@ In the context of differentiable digital signal processing (DDSP), the state-of-
 However, the gradient of MSS is uninformative when input and reconstruction are misaligned or when the synthesizer controls involve spectrotemporal modulations ([Vahidi et al., 2023](https://doi.org/10.48550/arXiv.2301.10183)). 
 Taking advantage of the stability guarantees of JTFS, SCRAPL expands the class of synthesizers which can be effectively decoded via DDSP.
 
-Additional scattering transform implementations or support for other machine learning frameworks (e.g. JAX) may be added to `scrapl` in the future.
+Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl` in the future.
+
+
+![image](/docs/figs/relative_param_error_vs_computation.svg)
+
+_Figure 1: Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. 
+Both axes are rescaled by the performance of a supervised model with the same number of parameters. 
+Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, 
+JTFS-based sound matching is evaluated only once._
 
 
 ## Table of Contents
-<hr>
 
 - [Installation](#installation)
 - [Examples](#examples)
@@ -33,7 +40,6 @@ Additional scattering transform implementations or support for other machine lea
 - [Citation](#citation)
 
 ## Installation
-<hr>
 
 You can install `scrapl` using `pip`: 
 
@@ -44,19 +50,15 @@ pip install scrapl
 The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
 
 ## Examples
-<hr>
 
 
 ## Hyperparameters
-<hr>
 
 
 ## Best Practices
-<hr>
 
 
 ## Algorithm
-<hr>
 
 ![image](/docs/figs/scrapl_algorithm.png)
 
