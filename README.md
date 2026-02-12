@@ -1,5 +1,6 @@
 <div align="center">
 <h1><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
+<a name="top"/>
 <p>
 <a href="https://christhetr.ee/" target=”_blank”>Christopher Mitcheltree</a>,
 <a href="https://www.lostanlen.com/" target=”_blank”>Vincent Lostanlen</a>,
@@ -26,7 +27,7 @@ We also propose an initialization heuristic based on importance sampling, which 
 We make our code and audio samples available and provide SCRAPL as a Python package.
 <p>
 
-![image](docs/figs/relative_param_error_vs_computation.svg)
+![image](/docs/figs/relative_param_error_vs_computation.svg)
 
 _Figure1: Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. 
 Both axes are rescaled by the performance of a supervised model with the same number of parameters. 
