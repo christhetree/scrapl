@@ -39,6 +39,7 @@ JTFS-based sound matching is evaluated only once._
 - [Algorithm](#algorithm)
 - [Citation](#citation)
 
+
 ## Installation
 
 You can install `scrapl` using `pip`: 
@@ -48,6 +49,7 @@ pip install scrapl
 ```
 
 The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
+
 
 ## Examples
 
@@ -64,7 +66,6 @@ The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well a
 
 
 ## Citation
-<hr>
 
 If you find this project helpful for your own work, please consider citing it:
 

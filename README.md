@@ -1,6 +1,7 @@
+<a name="top"/>
+
 <div align="center">
 <h1><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
-<a name="top"/>
 <p>
 <a href="https://christhetr.ee/" target=”_blank”>Christopher Mitcheltree</a>,
 <a href="https://www.lostanlen.com/" target=”_blank”>Vincent Lostanlen</a>,
@@ -38,8 +39,8 @@ Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational lim
 JTFS-based sound matching is evaluated only once._
 
 
-<h2>Citation</h2>
-<hr>
+## Citation
+
 Accepted to the International Conference on Learning Representations (ICLR), Rio de Janeiro, Brazil, 23 - 27 April 2026.
 <pre><code>
 @inproceedings{mitcheltree2026scrapl,
@@ -75,6 +76,7 @@ pip install scrapl
 ```
 
 The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
+
 
 ## Examples
 
