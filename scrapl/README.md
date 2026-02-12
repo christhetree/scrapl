@@ -53,6 +53,95 @@ The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well a
 
 ## Examples
 
+Importing and initializing `SCRAPLLoss` with the minimum required hyperparameters:
+
+```python
+# Import SCRAPLLoss from the scrapl Python package
+from scrapl import SCRAPLLoss
+
+# Initialize SCRAPLLoss with the minimum required hyperparameters
+scrapl_loss = SCRAPLLoss(
+    shape=48000,  # Length of x and x_target in samples
+    J=12,         # Number of octaves (1st and 2nd order temporal filters)
+    Q1=8,         # Filters per octave (1st order temporal filters)
+    Q2=2,         # Filters per octave (2nd order temporal filters)
+    J_fr=3,       # Number of octaves (2nd order frequential filters)
+    Q_fr=2,       # Filters per octave (2nd order frequential filters)
+)
+```
+
+Console output:
+
+```text
+INFO:scrapl.scrapl_loss:SCRAPLLoss:
+J=12, Q1=8, Q2=2, Jfr=3, Qfr=2, T=None, F=None
+use_log1p              = False, eps = 0.001
+grad_mult              = 100000000.0
+use_pwa                = True
+use_saga               = True
+sample_all_paths_first = False
+n_theta                = 1
+min_prob_frac          = 0.0
+number of SCRAPL keys  = 315
+unif_prob              = 0.00317460
+```
+
+Calculating the loss for two signals: 
+
+```python 
+import torch
+
+# Create two random tensors of shape (batch_size, num_channels, signal_length)
+x = torch.randn(4, 1, 48000) # Example input tensor 
+x_target = torch.randn(4, 1, 48000) # Example target tensor 
+# Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
+# the loss value will be different each time `scrapl_loss()` is called.
+loss = scrapl_loss(x, x_target)
+print(f"SCRAPL loss: {loss.item()}")
+```
+
+`SCRAPLLoss` utility attributes and methods:
+
+```python
+print(f"Number of scattering paths: {scrapl_loss.n_paths}")
+print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
+print(f"Most recently sampled path index (prev. example): {scrapl_loss.curr_path_idx}")
+
+# Calculate the loss for a specific path index
+loss = scrapl_loss(x, x_target, path_idx=8)
+print(f"Most recently sampled path index (specific): {scrapl_loss.curr_path_idx}")
+
+# Calculate the loss with a random seed for deterministic path sampling
+# (this will sample the same path index every time)
+loss = scrapl_loss(x, x_target, seed=42)
+print(f"Most recently sampled path index (random seed): {scrapl_loss.curr_path_idx}")
+print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
+
+# Get the state dictionary of the SCRAPLLoss instance
+state_dict = scrapl_loss.state_dict()
+
+# Clear all state of the SCRAPLLoss instance
+scrapl_loss.clear()
+print(f"Path sampling statistics (cleared): {scrapl_loss.path_counts}")
+
+# Load a state dictionary into the SCRAPLLoss instance
+scrapl_loss.load_state_dict(state_dict)
+print(f"Path sampling statistics (loaded): {scrapl_loss.path_counts}")
+```
+
+Console output:
+
+```text
+Number of scattering paths: 315
+Uniform path sampling probability: 0.003175
+Most recently sampled path index (prev. example): 106
+Most recently sampled path index (specific): 8
+Most recently sampled path index (random seed): 211
+Path sampling statistics (original): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
+Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+```
+
 
 ## Hyperparameters
 

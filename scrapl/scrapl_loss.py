@@ -109,12 +109,13 @@ class SCRAPLLoss(nn.Module):
             f"sample_all_paths_first = {sample_all_paths_first}\n"
             f"n_theta                = {n_theta}\n"
             f"min_prob_frac          = {min_prob_frac}\n"
-            f"number of SCRAPL keys  = {self.n_paths}\n"
+            f"number of SCRAPL paths = {self.n_paths}\n"
             f"unif_prob              = {self.unif_prob:.8f}\n"
         )
         self.curr_path_idx = None
         self.path_counts = defaultdict(int)
         self.rand_gen = tr.Generator(device="cpu")
+        # This is only used if sample_all_paths_first is True
         self.unsampled_paths = list(range(self.n_paths))
 
         # Grad related setup
@@ -213,7 +214,18 @@ class SCRAPLLoss(nn.Module):
             del state_dict[k]
         for attr in self.STATE_DICT_INCLUDED_ATTRS:
             assert attr not in state_dict
-            state_dict[f"{global_prefix}{attr}"] = getattr(self, attr)
+            val = getattr(self, attr)
+            # Attempt to copy or clone the val to avoid potential issues with
+            # references to mutable objects in the state dict
+            try:
+                val = val.copy()
+            except AttributeError:
+                pass
+            try:
+                val = val.clone()
+            except AttributeError:
+                pass
+            state_dict[f"{global_prefix}{attr}"] = val
         return state_dict
 
     def load_state_dict(self, state_dict: Dict[str, T], *args, **kwargs) -> None:
@@ -355,6 +367,8 @@ class SCRAPLLoss(nn.Module):
         else:
             log.debug(f"Using specified path_idx = {path_idx}")
             assert 0 <= path_idx < self.n_paths
+            if seed is not None:
+                log.warning( f"seed is ignored when path_idx is specified" )
         dist, _, _ = self.calc_dist(x, x_target, path_idx)
 
         self.curr_path_idx = path_idx
