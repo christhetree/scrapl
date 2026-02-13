@@ -53,20 +53,20 @@ The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well a
 
 ## Examples
 
-Importing and initializing `SCRAPLLoss` with the minimum required hyperparameters:
+Importing and initializing `SCRAPLLoss` with the minimum required arguments:
 
 ```python
 # Import SCRAPLLoss from the scrapl Python package
 from scrapl import SCRAPLLoss
 
-# Initialize SCRAPLLoss with the minimum required hyperparameters
+# Initialize SCRAPLLoss with the minimum required arguments
 scrapl_loss = SCRAPLLoss(
     shape=48000,  # Length of x and x_target in samples
     J=12,         # Number of octaves (1st and 2nd order temporal filters)
-    Q1=8,         # Filters per octave (1st order temporal filters)
-    Q2=2,         # Filters per octave (2nd order temporal filters)
+    Q1=8,         # Wavelets per octave (1st order temporal filters)
+    Q2=2,         # Wavelets per octave (2nd order temporal filters)
     J_fr=3,       # Number of octaves (2nd order frequential filters)
-    Q_fr=2,       # Filters per octave (2nd order frequential filters)
+    Q_fr=2,       # Wavelets per octave (2nd order frequential filters)
 )
 ```
 
@@ -144,7 +144,8 @@ Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211
 
 ### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
 
-$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`. 
+$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`.
+The Adam hyperparameters $\beta_1$, $\beta_2$, and $\epsilon$ can be set using the `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` arguments in the `SCRAPLLoss` constructor.
 However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA to have any effect.
 When $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
 
@@ -239,7 +240,7 @@ theta_fn_kwargs = [{"x": batch} for batch in theta_is_batches]
 # Get the trainable weights of the encoder to pass to the warmup function
 params = [p for p in encoder.parameters()]
 
-# Initialize SCRAPLLoss with the minimum required hyperparameters and `n_theta`
+# Initialize SCRAPLLoss with the minimum required arguments and `n_theta`
 scrapl_loss = SCRAPLLoss(
     shape=n_samples,
     J=3,
@@ -323,6 +324,75 @@ INFO:scrapl.scrapl_loss:Loading probs from directory:
 
 
 ## Hyperparameters
+
+### `SCRAPLLoss`
+
+- `shape` (int)
+  - The length of the input signal (number of samples).
+- `J` (int)
+  - Number of octaves in the JTFS (1st and 2nd order temporal filters)
+- `Q1` (int)
+  - Wavelets per octave in the JTFS (1st order temporal filters)
+- `Q2` (int)
+  - Wavelets per octave in the JTFS (2nd order temporal filters)
+- `J_fr` (int)
+  - Number of octaves in the JTFS (2nd order frequential filters)
+- `Q_fr` (int)
+  - Wavelets per octave in the JTFS (2nd order frequential filters)
+- `T` (Optional[Union[str, int]])
+  - Temporal averaging size in samples of the JTFS. If 'global', averages over the entire signal. If 'None', averages over J**2 samples. 
+  - Defaults to None.
+- `F` (Optional[Union[str, int]])
+  - Frequential averaging size in frequency bins of the JTFS. If 'global', averages over all bins. If 'None', averages over J_fr * Q_fr bins. 
+  - Defaults to None.
+- `p` (int, optional)
+  - The order of the norm used for the distance calculation. 
+  - Defaults to 2 (Euclidean norm).
+- `use_rho_log1p` (bool, optional)
+  - If True, applies log1p scaling to the scattering coefficients (log(1 + x / `log1p_eps`)) before computing the distance. If True, `grad_mult` is no longer necessary and can be set to a value of 1.
+  - Defaults to False.
+- `log1p_eps` (float, optional)
+  - The epsilon value used in the log1p scaling.
+  - Defaults to 1e-3.
+- `grad_mult` (float, optional)
+  - A scalar multiplier applied to gradients to prevent JTFS precision errors when squaring gradient values in commonly used optimizers like Adam. 
+  - See https://hal.science/hal-05124224v1 for more information.
+  - When `use_rho_log1p` is True, `grad_mult` is no longer necessary and can be set to a value of 1.
+  - When `grad_mult` is not 1, `attach_params()` must be called with the model parameters being optimized for this to have an effect. 
+  - Defaults to 1e8.
+- `use_p_adam` (bool, optional)
+  - If True, enables the $\mathcal{P}$-Adam algorithm. 
+  - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
+  - Defaults to True.
+- `use_p_saga` (bool, optional)
+  - If True, enables the $\mathcal{P}$-SAGA algorithm. 
+  - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
+  - Defaults to True.
+- `sample_all_paths_first` (bool, optional)
+  - If True, forces the sampler to visit every possible scattering path once in order before switching to the internal path sampling distribution. 
+  - sDefaults to False.
+- `n_theta` (int, optional)
+  - Given an encoder and decoder (synth) self-supervised training architecture, the number of encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$. 
+  - This is only required for the importance sampling heuristic ($\theta$-IS) and calling the `warmup_lc_hvp()` method before training. 
+  - Defaults to 1.
+- `min_prob_frac` (float, optional)
+  - When using $\theta$-IS$, the minimum fraction of the uniform sampling probability assigned to any path, ensuring no path has zero probability of being sampled. 
+  - Defaults to 0.0.
+- `probs_path` (Optional[str], optional)
+  - File path to a `.pt` file containing pre-computed sampling probabilities for the scattering paths. 
+  - Defaults to None.
+- `eps` (float, optional)
+  - A small value for numerical stability in probability calculations. 
+  - Defaults to 1e-12.
+- `p_adam_b1` (float, optional)
+  - $\beta_1$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 0.9.
+- `p_adam_b2` (float, optional)
+  - $\beta_2$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 0.999.
+- `p_adam_eps` (float, optional)
+  - $\epsilon$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 1e-8.
 
 
 ## Best Practices
