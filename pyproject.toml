@@ -1,5 +1,5 @@
 [project]
-name = "scrapl"
+name = "scrapl-loss"
 version = "0.1.0"
 description = "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
 readme = "scrapl/README.md"

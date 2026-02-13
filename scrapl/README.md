@@ -47,7 +47,7 @@ JTFS-based sound matching is evaluated only once._
 You can install `scrapl` using `pip`: 
 
 ```
-pip install scrapl
+pip install scrapl-loss
 ```
 
 The package requires Python 3.10 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.

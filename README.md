@@ -73,7 +73,7 @@ Accepted to the International Conference on Learning Representations (ICLR), Rio
 You can install `scrapl` using `pip`: 
 
 ```
-pip install scrapl
+pip install scrapl-loss
 ```
 
 The package requires Python 3.10 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
@@ -537,7 +537,7 @@ We make our code and audio samples available and provide SCRAPL as a Python pack
    `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/fadtk/`
 1. The experiments source code is currently not documented, but don't hesitate to open an issue if you have any questions or comments.
 1. A PyPI Python package of the SCRAPL algorithm for the joint time-frequency scattering transform (JTFS) is available and can be installed with:\
-   `pip install scrapl`\
+   `pip install scrapl-loss`\
    The package documentation can be found in the [`scrapl/`](./scrapl) directory.
 
 If you would like to learn more about wavelets, scattering transforms, and deep learning for music and audio, check out our ISMIR 2023 tutorial:\
