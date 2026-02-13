@@ -849,7 +849,7 @@ class SCRAPLLoss(nn.Module):
         Executes the $\theta$-Importance Sampling ($\\theta$-IS) warmup procedure to
         initialize a non-uniform scattering path sampling probability distribution
         based on the local curvature of the loss landscape. For more information please
-        visit: https://github.com/christhetree/scrapl/#theta-is-example
+        visit: https://github.com/christhetree/scrapl/#importance-sampling-warmup
 
         **Parallelization:** To speed up warmup, this method can be run on multiple
         GPUs simultaneously by assigning disjoint [`start_path_idx`, `end_path_idx`)

@@ -60,6 +60,7 @@ Accepted to the International Conference on Learning Representations (ICLR), Rio
   - [Hyperparameters](#hyperparameters)
   - [Best Practices](#best-practices)
   - [Algorithm](#algorithm)
+  - [Known Issues](#known-issues)
 - [Paper Experiments](#paper-experiments)
   - [Abstract](#abstract)
   - [Instructions for Reproducibility](#instructions-for-reproducibility)
@@ -80,20 +81,20 @@ The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well a
 
 ## Examples
 
-Importing and initializing `SCRAPLLoss` with the minimum required hyperparameters:
+Importing and initializing `SCRAPLLoss` with the minimum required arguments:
 
 ```python
 # Import SCRAPLLoss from the scrapl Python package
 from scrapl import SCRAPLLoss
 
-# Initialize SCRAPLLoss with the minimum required hyperparameters
+# Initialize SCRAPLLoss with the minimum required arguments
 scrapl_loss = SCRAPLLoss(
     shape=48000,  # Length of x and x_target in samples
     J=12,         # Number of octaves (1st and 2nd order temporal filters)
-    Q1=8,         # Filters per octave (1st order temporal filters)
-    Q2=2,         # Filters per octave (2nd order temporal filters)
+    Q1=8,         # Wavelets per octave (1st order temporal filters)
+    Q2=2,         # Wavelets per octave (2nd order temporal filters)
     J_fr=3,       # Number of octaves (2nd order frequential filters)
-    Q_fr=2,       # Filters per octave (2nd order frequential filters)
+    Q_fr=2,       # Wavelets per octave (2nd order frequential filters)
 )
 ```
 
@@ -171,7 +172,8 @@ Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211
 
 ### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
 
-$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`. 
+$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`.
+The Adam hyperparameters $\beta_1$, $\beta_2$, and $\epsilon$ can be set using the `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` arguments in the `SCRAPLLoss` constructor.
 However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA to have any effect.
 When $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
 
@@ -215,7 +217,7 @@ INFO:scrapl.scrapl_loss:Attached 5 parameter tensors (816009 weights)
 INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 ```
 
-### Importance Sampling ($\theta$-IS) Warmup
+### Importance Sampling Warmup
 
 The SCRAPL algorithm includes an importance sampling heuristic ($\theta$-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
 This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$ for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
@@ -266,7 +268,7 @@ theta_fn_kwargs = [{"x": batch} for batch in theta_is_batches]
 # Get the trainable weights of the encoder to pass to the warmup function
 params = [p for p in encoder.parameters()]
 
-# Initialize SCRAPLLoss with the minimum required hyperparameters and `n_theta`
+# Initialize SCRAPLLoss with the minimum required arguments and `n_theta`
 scrapl_loss = SCRAPLLoss(
     shape=n_samples,
     J=3,
@@ -470,10 +472,29 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 
 ## Best Practices
 
+- SCRAPL and the JTFS are best suited for comparing audio signals that:
+  - Contain spectrotemporal modulations
+  - Benefit from multi-resolution analysis like percussive sounds
+  - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
+- Choosing the best JTFS hyperparameters for a given task is very important and requires some understanding of how wavelet scattering transforms work. For an introduction to the JTFS for audio signal processing, check out our ISMIR 2023 tutorial: [Kymatio: Deep Learning meets Wavelet Theory for Music Signal Processing](https://www.kymat.io/ismir23-tutorial/intro.html)
+- If GPU memory is becoming a bottleneck, try reducing the number of scattering paths by decreasing the required JTFS arguments or disabling $\mathcal{P}$-SAGA and then $\mathcal{P}$-Adam.
+- If the SCRAPL loss is not converging and $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled and the model parameters have been attached to the `SCRAPLLoss` instance, try reducing the learning rate of the downstream vanilla SGD optimizer.
+- When using $\mathcal{P}$-Adam and / or $\mathcal{P}$-SAGA, use vanilla SGD with no momentum and optional weight decay as the downstream optimizer.
+- When using $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA, or `grad_mult != 1.0`, ensure that `attach_params()` is called before training for these features to have any effect.
+- When using $\theta$-IS, ensure that the encoder and decoder (synth) are deterministic during the warmup phase, but they can be non-deterministic otherwise.
+- The `warmup_lc_hvp` method can be parallelized across paths by assigning disjoint [`start_path_idx`, `end_path_idx`) ranges to each process and providing a `save_dir`. After all processes finish, use `load_probs_from_warmup_dir` to load the aggregated path sampling probability distribution into a `SCRAPLLoss` instance.
+- The `warmup_lc_hvp` method is most efficient when used with a single large batch filling all available GPU memory rather than many smaller batches.
+
 
 ## Algorithm
 
 ![image](/docs/figs/scrapl_algorithm.png)
+
+
+## Known Issues
+
+- Resuming training from a checkpoint when model parameters have been attached (i.e. $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA or `grad_mult` are enabled) is currently not supported.
+- Parallelization of the `warmup_lc_hvp` method across $\theta_{\mathrm{synth}}$ is currently not implemented, which may lead to long warmup times when the number of encoder output / decoder (synth) input parameters `n_theta` is large.
 
 
 # Paper Experiments

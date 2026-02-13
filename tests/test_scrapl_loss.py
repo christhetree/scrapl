@@ -8,7 +8,7 @@ def test_scrapl_loss() -> None:
     # Import SCRAPLLoss from the scrapl Python package
     from scrapl import SCRAPLLoss
 
-    # Initialize SCRAPLLoss with the minimum required hyperparameters
+    # Initialize SCRAPLLoss with the minimum required arguments
     scrapl_loss = SCRAPLLoss(
         shape=48000,  # Length of x and x_target in samples
         J=12,  # Number of octaves (1st order temporal filters)
@@ -133,7 +133,7 @@ def test_scrapl_loss_warmup() -> None:
     # Get the trainable weights of the encoder to pass to the warmup function
     params = [p for p in encoder.parameters()]
 
-    # Initialize SCRAPLLoss with the minimum required hyperparameters and `n_theta`
+    # Initialize SCRAPLLoss with the minimum required arguments and `n_theta`
     scrapl_loss = SCRAPLLoss(
         shape=n_samples,
         J=3,
