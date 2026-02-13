@@ -9,7 +9,7 @@
 <a href="https://mathieulagrange.github.io/" target=”_blank”>Mathieu Lagrange</a>
 </p>
 
-[![Release](https://img.shields.io/badge/PyPI-v0.1.0-green)](https://pypi.org/project/scrapl/)
+[![Release](https://img.shields.io/badge/PyPI-v0.1.0-green)](https://pypi.org/project/scrapl-loss/)
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
 [![Listening Samples](https://img.shields.io/badge/%F0%9F%94%8A%F0%9F%8E%B6-Listening_Samples-blue)](https://christhetree.github.io/scrapl/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](https://opensource.org/license/mit)
