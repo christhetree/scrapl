@@ -1,3 +1,5 @@
+import shutil
+
 import torch as tr
 from torch import nn
 
@@ -73,6 +75,7 @@ def test_scrapl_loss() -> None:
     # Since we are using P-Adam and / or P-SAGA, we should use vanilla SGD with no
     # momentum and optional weight decay as the downstream optimizer
     from torch.optim import SGD
+
     sgd_optimizer = SGD(model.parameters(), lr=1e-4, weight_decay=0.01)
 
     # Example forward and backward step with P-Adam and P-SAGA now active
@@ -182,6 +185,9 @@ def test_scrapl_loss_warmup() -> None:
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
     )
 
+    # Remove the warmup directory after loading the probabilities
+    shutil.rmtree("scrapl_warmup")
+
     # scrapl.warmup_lc_hess_multibatch(
     #     theta_fn=theta_fn,
     #     synth_fn=synth_fn,
@@ -208,5 +214,5 @@ def test_scrapl_loss_warmup() -> None:
 
 
 if __name__ == "__main__":
-    # test_scrapl_loss()
+    test_scrapl_loss()
     test_scrapl_loss_warmup()

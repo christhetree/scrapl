@@ -19,7 +19,7 @@
 `scrapl` is a Python package for efficient evaluation of multivariable scattering transforms, specifically designed for use as a differentiable loss function in machine learning applications and perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing. 
 It implements the "Scattering Transform with Random Paths for Machine Learning" (SCRAPL) algorithm, which accelerates gradient-based optimization of neural networks with scattering transforms by stochastically sampling scattering paths to approximate the full transform's gradient.
 This reduces the computational and memory costs by one to three orders of magnitude. 
-SCRAPL also leverages specialized stochastic optimization techniques ($\mathcal{P}$-Adam, $\mathcal{P}$-SAGA) and an architecture-informed importance sampling heuristic ($\theta$-IS) to stabilize gradients and improve convergence.
+SCRAPL also leverages specialized stochastic optimization techniques (𝒫-Adam, 𝒫-SAGA) and an architecture-informed importance sampling heuristic (θ-IS) to stabilize gradients and improve convergence.
 For more details, please see the [ICLR 2026 paper](https://openreview.net/forum?id=RuYwbd5xYa).
 
 `scrapl` currently contains a PyTorch implementation of the SCRAPL algorithm for the [joint time–frequency scattering transform (JTFS)](https://www.kymat.io/ismir23-tutorial/ch1_intro/why_wavelets.html), which demodulates spectrotemporal patterns at multiple scales and rates, and has been shown to correlate with human perception ([Lostanlen et al., 2021](https://link.springer.com/article/10.1186/s13636-020-00187-z); [Tian et al., 2025](https://doi.org/10.48550/arXiv.2507.07764)).
@@ -31,7 +31,7 @@ Taking advantage of the stability guarantees of JTFS, SCRAPL expands the class o
 Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl` in the future.
 
 
-![image](/docs/figs/relative_param_error_vs_computation.svg)
+![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation.svg)
 
 _Figure 1: Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. 
 Both axes are rescaled by the performance of a supervised model with the same number of parameters. 
@@ -170,12 +170,12 @@ Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
 Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
 ```
 
-### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
+### Using 𝒫-Adam and 𝒫-SAGA
 
-$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled by default when initializing `SCRAPLLoss`.
-The Adam hyperparameters $\beta_1$, $\beta_2$, and $\epsilon$ can be set using the `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` arguments in the `SCRAPLLoss` constructor.
-However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA to have any effect.
-When $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
+𝒫-Adam and 𝒫-SAGA are enabled by default when initializing `SCRAPLLoss`.
+The Adam hyperparameters β1, β2, and ε can be set using the `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` arguments in the `SCRAPLLoss` constructor.
+However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for 𝒫-Adam and 𝒫-SAGA to have any effect.
+When 𝒫-Adam and 𝒫-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
 
 ```python
 from torch import nn
@@ -219,9 +219,9 @@ INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 
 ### Importance Sampling Warmup
 
-The SCRAPL algorithm includes an importance sampling heuristic ($\theta$-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
-This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$ for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
-This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths (currently implemented) and $\theta_{\mathrm{synth}}$ (to be added in the future).
+The SCRAPL algorithm includes an importance sampling heuristic (θ-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
+This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters θ<sub>synth</sub> for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
+This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths (currently implemented) and θ<sub>synth</sub> (to be added in the future).
 
 ```python
 import torch as tr
@@ -327,19 +327,19 @@ Uniform path sampling probability: 0.142857
 [min, max] path sampling probabilities (before warmup): [0.142857, 0.142857]
 
 INFO:scrapl.scrapl_loss:Starting warmup_lc_hvp with agg = none for 5 parameter(s) and 1 batch(es), 20 iter (multibatch = False)
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 38ms | Tot: 749ms | power iter error: 0.0001
 INFO:scrapl.scrapl_loss:path_idx = 0, curr_vals = tensor([0.9898, 0.1256, 0.2016])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 59ms | Tot: 1s190ms | power iter error: 0.0117
 INFO:scrapl.scrapl_loss:path_idx = 1, curr_vals = tensor([1.0082, 0.1349, 0.1406])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 58ms | Tot: 1s148ms | power iter error: 0.0045
 INFO:scrapl.scrapl_loss:path_idx = 2, curr_vals = tensor([0.9389, 0.0788, 0.1565])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 62ms | Tot: 1s105ms | power iter error: 0.0016
 INFO:scrapl.scrapl_loss:path_idx = 3, curr_vals = tensor([0.9059, 0.1199, 0.1678])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s111ms | power iter error: 0.0113
 INFO:scrapl.scrapl_loss:path_idx = 4, curr_vals = tensor([1.0138, 0.1352, 0.1418])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s104ms | power iter error: 0.0038
 INFO:scrapl.scrapl_loss:path_idx = 5, curr_vals = tensor([0.9248, 0.0741, 0.1556])
- [=============================================================>...]   20/20 
+ [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s109ms | power iter error: 0.0014
 INFO:scrapl.scrapl_loss:path_idx = 6, curr_vals = tensor([0.8879, 0.1157, 0.1654])
 INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to scrapl_warmup/probs.pt
 
@@ -393,22 +393,22 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - When `grad_mult` is not 1, `attach_params()` must be called with the model parameters being optimized for this to have an effect. 
   - Defaults to 1e8.
 - `use_p_adam` (bool, optional)
-  - If True, enables the $\mathcal{P}$-Adam algorithm. 
+  - If True, enables the 𝒫-Adam algorithm. 
   - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
   - Defaults to True.
 - `use_p_saga` (bool, optional)
-  - If True, enables the $\mathcal{P}$-SAGA algorithm. 
+  - If True, enables the 𝒫-SAGA algorithm. 
   - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
   - Defaults to True.
 - `sample_all_paths_first` (bool, optional)
   - If True, forces the sampler to visit every possible scattering path once in order before switching to the internal path sampling distribution. 
   - sDefaults to False.
 - `n_theta` (int, optional)
-  - Given an encoder and decoder (synth) self-supervised training architecture, the number of encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$. 
-  - This is only required for the importance sampling heuristic ($\theta$-IS) and calling the `warmup_lc_hvp()` method before training. 
+  - Given an encoder and decoder (synth) self-supervised training architecture, the number of encoder output / decoder (synth) input parameters θ<sub>synth</sub>. 
+  - This is only required for the importance sampling heuristic (θ-IS) and calling the `warmup_lc_hvp()` method before training. 
   - Defaults to 1.
 - `min_prob_frac` (float, optional)
-  - When using $\theta$-IS$, the minimum fraction of the uniform sampling probability assigned to any path, ensuring no path has zero probability of being sampled. 
+  - When using θ-IS, the minimum fraction of the uniform sampling probability assigned to any path, ensuring no path has zero probability of being sampled. 
   - Defaults to 0.0.
 - `probs_path` (Optional[str], optional)
   - File path to a `.pt` file containing pre-computed sampling probabilities for the scattering paths. 
@@ -417,31 +417,31 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - A small value for numerical stability in probability calculations. 
   - Defaults to 1e-12.
 - `p_adam_b1` (float, optional)
-  - $\beta_1$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - β1 Adam hyperparameter for the internal 𝒫-Adam algorithm. 
   - Defaults to 0.9.
 - `p_adam_b2` (float, optional)
-  - $\beta_2$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - β2 Adam hyperparameter for the internal 𝒫-Adam algorithm. 
   - Defaults to 0.999.
 - `p_adam_eps` (float, optional)
-  - $\epsilon$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - ε Adam hyperparameter for the internal 𝒫-Adam algorithm. 
   - Defaults to 1e-8.
 
 
-### `SCRAPLLoss.warmup_lc_hvp` (Importance Sampling ($\theta$-IS) Warmup)
+### `SCRAPLLoss.warmup_lc_hvp` (Importance Sampling (θ-IS) Warmup)
 
 **Parallelization:** To speed up warmup, this method can be run on multiple GPUs simultaneously by assigning disjoint [`start_path_idx`, `end_path_idx`) ranges to each process and providing a `save_dir`. After all processes finish, use `load_probs_from_warmup_dir` to load the aggregated path sampling probability distribution into a `SCRAPLLoss` instance.
 
 - `theta_fn` (Callable[..., T])
-  - The encoder function. It must accept arguments provided in `theta_fn_kwargs` and return a tensor $\theta_{\mathrm{synth}}$ of shape `(batch_size, n_theta)`. 
+  - The encoder function. It must accept arguments provided in `theta_fn_kwargs` and return a tensor θ<sub>synth</sub> of shape `(batch_size, n_theta)`. 
   - This function should be deterministic during warmup, but can be non-deterministic otherwise.
 - `synth_fn` (Callable[[T, ...], T])
-  - The decoder (synthesizer) function. It must accept the $\theta_{\mathrm{synth}}$ tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
+  - The decoder (synthesizer) function. It must accept the θ<sub>synth</sub> tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
   - This function should be deterministic during warmup, but can be non-deterministic otherwise.
 - `theta_fn_kwargs` (List[Dict[str, Any]])
   - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(n_batches, n_ch, n_samples)`. 
   - The length of this list determines the number of batches used for the loss landscape curvature estimation and is a tradeoff between computational cost and curvature estimation accuracy.
 - `params` (List[Parameter])
-  - A list of encoder parameters (learnable weights) involved in the computation of $\theta_{\mathrm{synth}}$. 
+  - A list of encoder parameters (learnable weights) involved in the computation of θ<sub>synth</sub>. 
   - These parameters must have no prior gradients (i.e. `p.grad is None` for all `p` in `params`) before calling this method.
 - `synth_fn_kwargs` (Optional[List[Dict[str, Any]]], optional)
   - A list of dictionaries corresponding to `theta_fn_kwargs`, containing additional arguments for `synth_fn`. 
@@ -477,24 +477,24 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - Benefit from multi-resolution analysis like percussive sounds
   - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
 - Choosing the best JTFS hyperparameters for a given task is very important and requires some understanding of how wavelet scattering transforms work. For an introduction to the JTFS for audio signal processing, check out our ISMIR 2023 tutorial: [Kymatio: Deep Learning meets Wavelet Theory for Music Signal Processing](https://www.kymat.io/ismir23-tutorial/intro.html)
-- If GPU memory is becoming a bottleneck, try reducing the number of scattering paths by decreasing the required JTFS arguments or disabling $\mathcal{P}$-SAGA and then $\mathcal{P}$-Adam.
-- If the SCRAPL loss is not converging and $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are enabled and the model parameters have been attached to the `SCRAPLLoss` instance, try reducing the learning rate of the downstream vanilla SGD optimizer.
-- When using $\mathcal{P}$-Adam and / or $\mathcal{P}$-SAGA, use vanilla SGD with no momentum and optional weight decay as the downstream optimizer.
-- When using $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA, or `grad_mult != 1.0`, ensure that `attach_params()` is called before training for these features to have any effect.
-- When using $\theta$-IS, ensure that the encoder and decoder (synth) are deterministic during the warmup phase, but they can be non-deterministic otherwise.
+- If GPU memory is becoming a bottleneck, try reducing the number of scattering paths by decreasing the required JTFS arguments or disabling 𝒫-SAGA and then 𝒫-Adam.
+- If the SCRAPL loss is not converging and 𝒫-Adam and 𝒫-SAGA are enabled and the model parameters have been attached to the `SCRAPLLoss` instance, try reducing the learning rate of the downstream vanilla SGD optimizer.
+- When using 𝒫-Adam and / or 𝒫-SAGA, use vanilla SGD with no momentum and optional weight decay as the downstream optimizer.
+- When using 𝒫-Adam, 𝒫-SAGA, or `grad_mult != 1.0`, ensure that `attach_params()` is called before training for these features to have any effect.
+- When using θ-IS, ensure that the encoder and decoder (synth) are deterministic during the warmup phase, but they can be non-deterministic otherwise.
 - The `warmup_lc_hvp` method can be parallelized across paths by assigning disjoint [`start_path_idx`, `end_path_idx`) ranges to each process and providing a `save_dir`. After all processes finish, use `load_probs_from_warmup_dir` to load the aggregated path sampling probability distribution into a `SCRAPLLoss` instance.
 - The `warmup_lc_hvp` method is most efficient when used with a single large batch filling all available GPU memory rather than many smaller batches.
 
 
 ## Algorithm
 
-![image](/docs/figs/scrapl_algorithm.png)
+![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/scrapl_algorithm.png)
 
 
 ## Known Issues
 
-- Resuming training from a checkpoint when model parameters have been attached (i.e. $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA or `grad_mult` are enabled) is currently not supported.
-- Parallelization of the `warmup_lc_hvp` method across $\theta_{\mathrm{synth}}$ is currently not implemented, which may lead to long warmup times when the number of encoder output / decoder (synth) input parameters `n_theta` is large.
+- Resuming training from a checkpoint when model parameters have been attached (i.e. 𝒫-Adam, 𝒫-SAGA or `grad_mult` are enabled) is currently not supported.
+- Parallelization of the `warmup_lc_hvp` method across θ<sub>synth</sub> is currently not implemented, which may lead to long warmup times when the number of encoder output / decoder (synth) input parameters `n_theta` is large.
 
 
 # Paper Experiments

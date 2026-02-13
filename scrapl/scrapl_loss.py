@@ -102,13 +102,13 @@ class SCRAPLLoss(nn.Module):
                 not 1, `attach_params()` must be called with the model parameters
                 being optimized for this to have an effect.
                 Defaults to 1e8.
-            use_p_adam (bool, optional): If True, enables the $\mathcal{P}$-Adam
+            use_p_adam (bool, optional): If True, enables the 𝒫-Adam
                 algorithm. When True, `attach_params()` must be called before training
                 with the model parameters being optimized and vanilla stochastic
                 gradient descent (SGD) with no momentum and optional weight decay
                 should be used as the downstream optimizer.
                 Defaults to True.
-            use_p_saga (bool, optional): If True, enables the $\mathcal{P}$-SAGA
+            use_p_saga (bool, optional): If True, enables the 𝒫-SAGA
                 algorithm. When True, `attach_params()` must be called before training
                 with the model parameters being optimized and vanilla stochastic
                 gradient descent (SGD) with no momentum and optional weight decay
@@ -120,12 +120,12 @@ class SCRAPLLoss(nn.Module):
                 Defaults to False.
             n_theta (int, optional): Given an encoder and decoder (synth)
                 self-supervised training architecture, the number of encoder output /
-                decoder (synth) input parameters $\theta_{\mathrm{synth}}$. This is
-                only required for the importance sampling heuristic ($\theta$-IS) and
-                calling the `warmup_lc_hvp()` method before training.
+                decoder (synth) input parameters θ_synth. This is only required for the
+                importance sampling heuristic (θ-IS) and calling the `warmup_lc_hvp()`
+                method before training.
                 Defaults to 1.
-            min_prob_frac (float, optional): When using $\theta$-IS$, the minimum
-                fraction of the uniform sampling probability assigned to any path,
+            min_prob_frac (float, optional): When using θ-IS, the minimum fraction of
+                the uniform sampling probability assigned to any path,
                 ensuring no path has zero probability of being sampled.
                 Defaults to 0.0.
             probs_path (Optional[str], optional): File path to a `.pt` file containing
@@ -134,14 +134,14 @@ class SCRAPLLoss(nn.Module):
             eps (float, optional): A small value for numerical stability in probability
                 calculations.
                 Defaults to 1e-12.
-            p_adam_b1 (float, optional): $\beta_1$ Adam hyperparameter for the internal
-                $\mathcal{P}$-Adam algorithm.
+            p_adam_b1 (float, optional): β1 Adam hyperparameter for the internal
+                𝒫-Adam algorithm.
                 Defaults to 0.9.
-            p_adam_b2 (float, optional): $\beta_2$ Adam hyperparameter for the internal
-                $\mathcal{P}$-Adam algorithm.
+            p_adam_b2 (float, optional): β2 Adam hyperparameter for the internal
+                𝒫-Adam algorithm.
                 Defaults to 0.999.
-            p_adam_eps (float, optional): $\epsilon$ Adam hyperparameter for the
-                internal $\mathcal{P}$-Adam algorithm.
+            p_adam_eps (float, optional): ε Adam hyperparameter for the internal
+                𝒫-Adam algorithm.
                 Defaults to 1e-8.
 
         Raises:
@@ -846,7 +846,7 @@ class SCRAPLLoss(nn.Module):
         force_multibatch: bool = False,
     ) -> None:
         """
-        Executes the $\theta$-Importance Sampling ($\\theta$-IS) warmup procedure to
+        Executes the θ-Importance Sampling (θ-IS) warmup procedure to
         initialize a non-uniform scattering path sampling probability distribution
         based on the local curvature of the loss landscape. For more information please
         visit: https://github.com/christhetree/scrapl/#importance-sampling-warmup
@@ -860,11 +860,11 @@ class SCRAPLLoss(nn.Module):
         Args:
             theta_fn (Callable[..., T]): The encoder function. It must accept arguments
                 provided in `theta_fn_kwargs` and return a tensor
-                $\theta_{\mathrm{synth}}$ of shape `(batch_size, n_theta)`. This
+                θ_synth of shape `(batch_size, n_theta)`. This
                 function should be deterministic during warmup, but can be
                 non-deterministic otherwise.
             synth_fn (Callable[[T, ...], T]): The decoder (synthesizer) function.
-                It must accept the $\theta_{\mathrm{synth}}$ tensor output by
+                It must accept the θ_synth tensor output by
                 `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor
                 `x_hat` of shape `(n_batches, n_ch, n_samples)`. This function should
                 be deterministic during warmup, but can be non-deterministic otherwise.
@@ -876,7 +876,7 @@ class SCRAPLLoss(nn.Module):
                 is a tradeoff between computational cost and curvature estimation
                 accuracy.
             params (List[Parameter]): A list of encoder parameters (learnable weights)
-                involved in the computation of $\theta_{\mathrm{synth}}$. These
+                involved in the computation of θ_synth. These
                 parameters must have no prior gradients (i.e. `p.grad is None` for all
                 `p` in `params`) before calling this method.
             synth_fn_kwargs (Optional[List[Dict[str, Any]]], optional): A list of
