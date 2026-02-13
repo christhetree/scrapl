@@ -189,6 +189,7 @@ INFO:scrapl.scrapl_loss:Attached 5 parameter tensors (816009 weights)
 INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 ```
 
+<a name="theta-is-example"/>
 ### Importance Sampling ($\theta$-IS) Warmup
 
 The SCRAPL algorithm includes an importance sampling heuristic ($\theta$-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
@@ -325,7 +326,11 @@ INFO:scrapl.scrapl_loss:Loading probs from directory:
 
 ## Hyperparameters
 
-### `SCRAPLLoss`
+### `SCRAPLLoss` (SCRAPL Algorithm Implementation for the JTFS in PyTorch)
+
+While the only required hyperparameters to initialize `SCRAPLLoss` are those necessary to define the JTFS, there are several additional hyperparameters that can be used to customize the behavior of the SCRAPL algorithm.
+However, the default values of these additional hyperparameters have been chosen to work well for most situations.
+For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`, and `F` hyperparameters, please visit: https://www.kymat.io/ismir23-tutorial/intro.html
 
 - `shape` (int)
   - The length of the input signal (number of samples).
@@ -393,6 +398,49 @@ INFO:scrapl.scrapl_loss:Loading probs from directory:
 - `p_adam_eps` (float, optional)
   - $\epsilon$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
   - Defaults to 1e-8.
+
+
+### `SCRAPLLoss.warmup_lc_hvp` (Importance Sampling ($\theta$-IS) Warmup)
+
+**Parallelization:** To speed up warmup, this method can be run on multiple GPUs simultaneously by assigning disjoint [`start_path_idx`, `end_path_idx`) ranges to each process and providing a `save_dir`. After all processes finish, use `load_probs_from_warmup_dir` to load the aggregated path sampling probability distribution into a `SCRAPLLoss` instance.
+
+- `theta_fn` (Callable[..., T])
+  - The encoder function. It must accept arguments provided in `theta_fn_kwargs` and return a tensor $\theta_{\mathrm{synth}}$ of shape `(batch_size, n_theta)`. 
+  - This function should be deterministic during warmup, but can be non-deterministic otherwise.
+- `synth_fn` (Callable[[T, ...], T])
+  - The decoder (synthesizer) function. It must accept the $\theta_{\mathrm{synth}}$ tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
+  - This function should be deterministic during warmup, but can be non-deterministic otherwise.
+- `theta_fn_kwargs` (List[Dict[str, Any]])
+  - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(n_batches, n_ch, n_samples)`. 
+  - The length of this list determines the number of batches used for the loss landscape curvature estimation and is a tradeoff between computational cost and curvature estimation accuracy.
+- `params` (List[Parameter])
+  - A list of encoder parameters (learnable weights) involved in the computation of $\theta_{\mathrm{synth}}$. 
+  - These parameters must have no prior gradients (i.e. `p.grad is None` for all `p` in `params`) before calling this method.
+- `synth_fn_kwargs` (Optional[List[Dict[str, Any]]], optional)
+  - A list of dictionaries corresponding to `theta_fn_kwargs`, containing additional arguments for `synth_fn`. 
+  - If provided, must have the same length as `theta_fn_kwargs`. 
+  - Defaults to None.
+- `start_path_idx` (int, optional)
+  - The starting index of the scattering paths to compute. Used for parallelizing the warmup across multiple devices. 
+  - Defaults to 0.
+- `end_path_idx` (Optional[int], optional)
+  - The ending index (exclusive) of the scattering paths to compute. If None, defaults to `self.n_paths`. 
+  - Defaults to None.
+- `save_dir` (Optional[str], optional)
+  - Directory path where intermediate eigenvalues (`vals_{path_idx}.pt`) and the final path sampling probability distribution (`probs.pt`) will be saved. 
+  - Defaults to "scrapl_warmup".
+- `n_iter` (int, optional)
+  - The maximum number of power iteration steps used to approximate the largest eigenvalue of the Hessian. 
+  - Higher values increase precision at the cost of computation time. 
+  - Defaults to 20.
+- `agg` (Literal["none", "mean", "max", "med"], optional)
+  - The aggregation strategy if `params` are split into individual tensors. 
+  - Usually kept as "none" to aggregate across the full parameter set provided unless it does not fit in GPU memory, in which case curvature is estimated for each parameter tensor separately and then aggregated at the end. 
+  - If you are seeing "out of memory" errors, try switching this to "med" to reduce memory usage at the cost of computation time. 
+  - Defaults to "none".
+- `force_multibatch` (bool, optional)
+  - Debugging tool. If True, forces the calculation to use multibatch logic even if `theta_fn_kwargs` contains only a single batch. 
+  - Defaults to False.
 
 
 ## Best Practices

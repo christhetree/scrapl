@@ -351,6 +351,122 @@ INFO:scrapl.scrapl_loss:Loading probs from directory:
 
 ## Hyperparameters
 
+### `SCRAPLLoss` (SCRAPL Algorithm Implementation for the JTFS in PyTorch)
+
+While the only required hyperparameters to initialize `SCRAPLLoss` are those necessary to define the JTFS, there are several additional hyperparameters that can be used to customize the behavior of the SCRAPL algorithm.
+However, the default values of these additional hyperparameters have been chosen to work well for most situations.
+For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`, and `F` hyperparameters, please visit: https://www.kymat.io/ismir23-tutorial/intro.html
+
+- `shape` (int)
+  - The length of the input signal (number of samples).
+- `J` (int)
+  - Number of octaves in the JTFS (1st and 2nd order temporal filters)
+- `Q1` (int)
+  - Wavelets per octave in the JTFS (1st order temporal filters)
+- `Q2` (int)
+  - Wavelets per octave in the JTFS (2nd order temporal filters)
+- `J_fr` (int)
+  - Number of octaves in the JTFS (2nd order frequential filters)
+- `Q_fr` (int)
+  - Wavelets per octave in the JTFS (2nd order frequential filters)
+- `T` (Optional[Union[str, int]])
+  - Temporal averaging size in samples of the JTFS. If 'global', averages over the entire signal. If 'None', averages over J**2 samples. 
+  - Defaults to None.
+- `F` (Optional[Union[str, int]])
+  - Frequential averaging size in frequency bins of the JTFS. If 'global', averages over all bins. If 'None', averages over J_fr * Q_fr bins. 
+  - Defaults to None.
+- `p` (int, optional)
+  - The order of the norm used for the distance calculation. 
+  - Defaults to 2 (Euclidean norm).
+- `use_rho_log1p` (bool, optional)
+  - If True, applies log1p scaling to the scattering coefficients (log(1 + x / `log1p_eps`)) before computing the distance. If True, `grad_mult` is no longer necessary and can be set to a value of 1.
+  - Defaults to False.
+- `log1p_eps` (float, optional)
+  - The epsilon value used in the log1p scaling.
+  - Defaults to 1e-3.
+- `grad_mult` (float, optional)
+  - A scalar multiplier applied to gradients to prevent JTFS precision errors when squaring gradient values in commonly used optimizers like Adam. 
+  - See https://hal.science/hal-05124224v1 for more information.
+  - When `use_rho_log1p` is True, `grad_mult` is no longer necessary and can be set to a value of 1.
+  - When `grad_mult` is not 1, `attach_params()` must be called with the model parameters being optimized for this to have an effect. 
+  - Defaults to 1e8.
+- `use_p_adam` (bool, optional)
+  - If True, enables the $\mathcal{P}$-Adam algorithm. 
+  - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
+  - Defaults to True.
+- `use_p_saga` (bool, optional)
+  - If True, enables the $\mathcal{P}$-SAGA algorithm. 
+  - When True, `attach_params()` must be called before training with the model parameters being optimized and vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer. 
+  - Defaults to True.
+- `sample_all_paths_first` (bool, optional)
+  - If True, forces the sampler to visit every possible scattering path once in order before switching to the internal path sampling distribution. 
+  - sDefaults to False.
+- `n_theta` (int, optional)
+  - Given an encoder and decoder (synth) self-supervised training architecture, the number of encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$. 
+  - This is only required for the importance sampling heuristic ($\theta$-IS) and calling the `warmup_lc_hvp()` method before training. 
+  - Defaults to 1.
+- `min_prob_frac` (float, optional)
+  - When using $\theta$-IS$, the minimum fraction of the uniform sampling probability assigned to any path, ensuring no path has zero probability of being sampled. 
+  - Defaults to 0.0.
+- `probs_path` (Optional[str], optional)
+  - File path to a `.pt` file containing pre-computed sampling probabilities for the scattering paths. 
+  - Defaults to None.
+- `eps` (float, optional)
+  - A small value for numerical stability in probability calculations. 
+  - Defaults to 1e-12.
+- `p_adam_b1` (float, optional)
+  - $\beta_1$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 0.9.
+- `p_adam_b2` (float, optional)
+  - $\beta_2$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 0.999.
+- `p_adam_eps` (float, optional)
+  - $\epsilon$ Adam hyperparameter for the internal $\mathcal{P}$-Adam algorithm. 
+  - Defaults to 1e-8.
+
+
+### `SCRAPLLoss.warmup_lc_hvp` (Importance Sampling ($\theta$-IS) Warmup)
+
+**Parallelization:** To speed up warmup, this method can be run on multiple GPUs simultaneously by assigning disjoint [`start_path_idx`, `end_path_idx`) ranges to each process and providing a `save_dir`. After all processes finish, use `load_probs_from_warmup_dir` to load the aggregated path sampling probability distribution into a `SCRAPLLoss` instance.
+
+- `theta_fn` (Callable[..., T])
+  - The encoder function. It must accept arguments provided in `theta_fn_kwargs` and return a tensor $\theta_{\mathrm{synth}}$ of shape `(batch_size, n_theta)`. 
+  - This function should be deterministic during warmup, but can be non-deterministic otherwise.
+- `synth_fn` (Callable[[T, ...], T])
+  - The decoder (synthesizer) function. It must accept the $\theta_{\mathrm{synth}}$ tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
+  - This function should be deterministic during warmup, but can be non-deterministic otherwise.
+- `theta_fn_kwargs` (List[Dict[str, Any]])
+  - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(n_batches, n_ch, n_samples)`. 
+  - The length of this list determines the number of batches used for the loss landscape curvature estimation and is a tradeoff between computational cost and curvature estimation accuracy.
+- `params` (List[Parameter])
+  - A list of encoder parameters (learnable weights) involved in the computation of $\theta_{\mathrm{synth}}$. 
+  - These parameters must have no prior gradients (i.e. `p.grad is None` for all `p` in `params`) before calling this method.
+- `synth_fn_kwargs` (Optional[List[Dict[str, Any]]], optional)
+  - A list of dictionaries corresponding to `theta_fn_kwargs`, containing additional arguments for `synth_fn`. 
+  - If provided, must have the same length as `theta_fn_kwargs`. 
+  - Defaults to None.
+- `start_path_idx` (int, optional)
+  - The starting index of the scattering paths to compute. Used for parallelizing the warmup across multiple devices. 
+  - Defaults to 0.
+- `end_path_idx` (Optional[int], optional)
+  - The ending index (exclusive) of the scattering paths to compute. If None, defaults to `self.n_paths`. 
+  - Defaults to None.
+- `save_dir` (Optional[str], optional)
+  - Directory path where intermediate eigenvalues (`vals_{path_idx}.pt`) and the final path sampling probability distribution (`probs.pt`) will be saved. 
+  - Defaults to "scrapl_warmup".
+- `n_iter` (int, optional)
+  - The maximum number of power iteration steps used to approximate the largest eigenvalue of the Hessian. 
+  - Higher values increase precision at the cost of computation time. 
+  - Defaults to 20.
+- `agg` (Literal["none", "mean", "max", "med"], optional)
+  - The aggregation strategy if `params` are split into individual tensors. 
+  - Usually kept as "none" to aggregate across the full parameter set provided unless it does not fit in GPU memory, in which case curvature is estimated for each parameter tensor separately and then aggregated at the end. 
+  - If you are seeing "out of memory" errors, try switching this to "med" to reduce memory usage at the cost of computation time. 
+  - Defaults to "none".
+- `force_multibatch` (bool, optional)
+  - Debugging tool. If True, forces the calculation to use multibatch logic even if `theta_fn_kwargs` contains only a single batch. 
+  - Defaults to False.
+
 
 ## Best Practices
 
