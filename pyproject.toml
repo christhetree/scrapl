@@ -3,7 +3,7 @@ name = "scrapl"
 version = "0.1.0"
 description = "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
 readme = "scrapl/README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [
     {name = "Christopher Mitcheltree", email = "christhetree@gmail.com"},
     {name = "Vincent Lostanlen", email = "vincent.lostanlen@ls2n.fr"},
@@ -29,6 +29,11 @@ dependencies = [
     "packaging",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.2",
+]
+
 [project.urls]
 Website = "https://christhetree.github.io/scrapl/"
 Repository = "https://github.com/christhetree/scrapl/"
@@ -47,8 +52,3 @@ module-root = "."
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v"  # verbose output
-
-[dependency-groups]
-dev = [
-    "pytest>=9.0.2",
-]

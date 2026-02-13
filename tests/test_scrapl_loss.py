@@ -90,6 +90,8 @@ def test_scrapl_loss() -> None:
     # To detach parameters (generally not necessary), simply attach an empty list
     scrapl_loss.attach_params([])
 
+    print("Passed test_scrapl_loss()")
+
 
 def test_scrapl_loss_warmup() -> None:
     import torch as tr
@@ -211,6 +213,8 @@ def test_scrapl_loss_warmup() -> None:
     # tr.save(scrapl.state_dict(), save_path)
     # state_dict = tr.load(save_path)
     # scrapl.load_state_dict(state_dict)
+
+    print("Passed test_scrapl_loss_warmup()")
 
 
 if __name__ == "__main__":

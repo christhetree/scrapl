@@ -50,7 +50,7 @@ You can install `scrapl` using `pip`:
 pip install scrapl
 ```
 
-The package requires Python 3.8 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
+The package requires Python 3.10 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
 
 
 ## Examples
