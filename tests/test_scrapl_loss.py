@@ -174,7 +174,9 @@ def test_scrapl_loss_warmup() -> None:
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
     )
 
-    scrapl_loss.load_probs_from_warmup_dir("scrapl_warmup", agg="mean")
+    # If warmup was conducted in parallel across multiple devices, the path sampling
+    # probabilities can be loaded from a directory
+    scrapl_loss.load_probs_from_warmup_dir(warmup_dir="scrapl_warmup")
     print(
         f"[min, max] path sampling probabilities: "
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
@@ -206,5 +208,5 @@ def test_scrapl_loss_warmup() -> None:
 
 
 if __name__ == "__main__":
-    test_scrapl_loss()
-    # test_scrapl_loss_warmup()
+    # test_scrapl_loss()
+    test_scrapl_loss_warmup()

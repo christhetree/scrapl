@@ -190,6 +190,9 @@ INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 
 ### Importance Sampling ($\theta$-IS) Warmup
 
+The SCRAPL algorithm includes an importance sampling heuristic ($\theta$-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
+This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters $\theta_{\mathrm{synth}}$ for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
+This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths (currently implemented) and $\theta_{\mathrm{synth}}$ (to be added in the future).
 
 ```python
 import torch as tr
@@ -270,6 +273,10 @@ print(
     f"[min, max] path sampling probabilities (after warmup): "
     f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
 )
+
+# If warmup was conducted in parallel across multiple devices, the path sampling
+# probabilities can be loaded from a directory
+scrapl_loss.load_probs_from_warmup_dir(warmup_dir="scrapl_warmup")
 ```
 
 Console output:
@@ -308,6 +315,10 @@ INFO:scrapl.scrapl_loss:path_idx = 6, curr_vals = tensor([0.8879, 0.1157, 0.1654
 INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to scrapl_warmup/probs.pt
 
 [min, max] path sampling probabilities (after warmup): [0.123653, 0.162354]
+
+INFO:scrapl.scrapl_loss:Loading probs from directory:
+	scrapl_warmup
+	min prob = 0.123653, max prob = 0.162354
 ```
 
 

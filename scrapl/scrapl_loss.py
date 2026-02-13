@@ -169,8 +169,8 @@ class SCRAPLLoss(nn.Module):
             self.n_paths,
         ), f"probs.shape = {probs.shape}, expected {(self.n_paths,)}"
         log.info(
-            f"Loading probs from:\n\t{probs_path}\n\tmin = {probs.min():.6f}, "
-            f"max = {probs.max():.6f}, mean = {probs.mean():.6f}"
+            f"Loading probs from:\n\t{probs_path}\n\tmin prob = {probs.min():.6f}, "
+            f"max prob = {probs.max():.6f}"
         )
         self.probs = probs
         self.loaded_probs_path = probs_path
@@ -191,6 +191,10 @@ class SCRAPLLoss(nn.Module):
             vals = tr.load(vals_path)
             self._aggregate_vals_and_update_probs(vals, path_idx, agg=agg)
         self.loaded_probs_path = warmup_dir
+        log.info(
+            f"Loading probs from directory:\n\t{os.path.abspath(warmup_dir)}\n\t"
+            f"min prob = {self.probs.min():.6f}, max prob = {self.probs.max():.6f}"
+        )
         self._check_probs()
 
     def _clear_grad_data(self) -> None:
@@ -405,13 +409,13 @@ class SCRAPLLoss(nn.Module):
         if self.training:  # TODO: check if this works
             self.path_counts[path_idx] += 1
             self.scrapl_t += 1
-            if self.grad_mult != 1.0 or self.use_p_adam or self.use_p_saga:
-                if not self.attached_params:
-                    log.warning(
-                        f"Parameters are not attached, but grad_mult "
-                        f"({self.grad_mult}), use_p_adam ({self.use_p_adam}), or "
-                        f"use_p_saga ({self.use_p_saga}) are enabled."
-                    )
+            # if self.grad_mult != 1.0 or self.use_p_adam or self.use_p_saga:
+            #     if not self.attached_params:
+            #         log.warning(
+            #             f"Parameters are not attached, but grad_mult "
+            #             f"({self.grad_mult}), use_p_adam ({self.use_p_adam}), or "
+            #             f"use_p_saga ({self.use_p_saga}) are enabled."
+            #         )
         return dist
 
     # Update prob methods ==============================================================
