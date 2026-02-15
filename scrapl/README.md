@@ -19,6 +19,13 @@ In the context of differentiable digital signal processing (DDSP), the state-of-
 However, the gradient of MSS is uninformative when input and reconstruction are misaligned or when the synthesizer controls involve spectrotemporal modulations ([Vahidi et al., 2023](https://doi.org/10.48550/arXiv.2301.10183)). 
 Taking advantage of the stability guarantees of JTFS, SCRAPL expands the class of synthesizers which can be effectively decoded via DDSP.
 
+Overall, SCRAPL with the JTFS is best suited for comparing audio signals that meet one or more of the following criteria:
+- Contain spectrotemporal modulations
+- Are non-stationary
+- Benefit from multi-resolution analysis like percussive sounds (which consist of both transients and sustained components)
+- Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
+- Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
+
 Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl-loss` in the future.
 
 
@@ -446,10 +453,12 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 
 ## Best Practices
 
-- SCRAPL and the JTFS are best suited for comparing audio signals that:
+- SCRAPL with the JTFS is best suited for comparing audio signals that meet one or more of the following criteria:
   - Contain spectrotemporal modulations
-  - Benefit from multi-resolution analysis like percussive sounds
+  - Are non-stationary
+  - Benefit from multi-resolution analysis like percussive sounds (which consist of both transients and sustained components)
   - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
+  - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 - Choosing the best JTFS hyperparameters for a given task is very important and requires some understanding of how wavelet scattering transforms work. For an introduction to the JTFS for audio signal processing, check out our ISMIR 2023 tutorial: [Kymatio: Deep Learning meets Wavelet Theory for Music Signal Processing](https://www.kymat.io/ismir23-tutorial/intro.html)
 - If GPU memory is becoming a bottleneck, try reducing the number of scattering paths by decreasing the required JTFS arguments or disabling 𝒫-SAGA and then 𝒫-Adam.
 - If the SCRAPL loss is not converging and 𝒫-Adam and 𝒫-SAGA are enabled and the model parameters have been attached to the `SCRAPLLoss` instance, try reducing the learning rate of the downstream vanilla SGD optimizer.
