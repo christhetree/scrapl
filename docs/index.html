@@ -47,7 +47,7 @@
 
             <div>
                 <a class="btn btn-outline-dark" href="https://openreview.net/forum?id=RuYwbd5xYa" target=”_blank” type="button">
-                    <i class="bi bi-newspaper"></i> Paper
+                    <i class="bi bi-file-richtext"></i> Paper
                 </a>
                 <a class="btn btn-outline-dark" href="https://github.com/christhetree/scrapl/#top" target=”_blank” type="button">
                     <i class="bi bi-code-slash"></i> Python Package
@@ -56,7 +56,13 @@
                     <i class="bi bi-code-slash"></i> Experiments Code
                 </a>
                 <a class="btn btn-outline-dark" href="https://docs.google.com/presentation/d/1mD4Fn_YGiU_bLcHtiPfMSPvQ0ztj-tRVm4hF3Kc78ZM/edit?usp=sharing" target=”_blank” type="button">
-                    <i class="bi bi-newspaper"></i> Slides
+                    <i class="bi bi-file-earmark-slides"></i> Slides
+                </a>
+                <a class="btn btn-outline-dark" href="docs/mitcheltree2026scrapl_poster.pdf" target=”_blank” type="button">
+                    <i class="bi bi-easel"></i> Poster
+                </a>
+                <a class="btn btn-outline-dark" href="https://www.kymat.io/ismir23-tutorial/" target=”_blank” type="button">
+                    <i class="bi bi-book"></i> Wavelet Tutorial
                 </a>
             </div>
         </div>
@@ -75,14 +81,12 @@
                 We implement SCRAPL for the joint time–frequency scattering transform (JTFS) which demodulates spectrotemporal patterns at multiple scales and rates, allowing a fine characterization of intermittent auditory textures.
                 We apply SCRAPL to differentiable digital signal processing (DDSP), specifically, unsupervised sound matching of a granular synthesizer and the Roland TR-808 drum machine.
                 We also propose an initialization heuristic based on importance sampling, which adapts SCRAPL to the perceptual content of the dataset, improving neural network convergence and evaluation performance.
-                We make our code and audio samples available and provide SCRAPL as a Python package.
+                We make our code and audio samples available and provide SCRAPL as a <a href="https://github.com/christhetree/scrapl/#top" target=”_blank”>Python package</a>.
             </p>
             <br>
-            <img class="img-fluid w-100 mx-auto d-block" src="figs/relative_param_error_vs_computation.svg">
-            <br>
-            <br>
-            <p class="text-center">Figure 1: <em>Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. Both axes are rescaled by the performance of a supervised model with the same number of parameters. Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.</em></p>
         </div>
+        <img class="img-fluid w-100 mx-auto d-block" src="figs/relative_param_error_vs_computation.svg">
+        <p class="text-center">Figure 1: <em>Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. Both axes are rescaled by the performance of a supervised model with the same number of parameters. Whiskers denote 95% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.</em></p>
     </div>
 
     <div class="section">
