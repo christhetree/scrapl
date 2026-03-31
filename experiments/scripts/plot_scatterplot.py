@@ -94,14 +94,28 @@ if __name__ == "__main__":
             xi *= 1.05
         else:
             xi *= 1.05
+        color = "black"
+        if label == "JTFS":
+            color = "red"
+        elif label == "SCRAPL":
+            color = "blue"
         texts.append(
-            plt.text(xi, yi, label, fontsize=fontsize, ha="left", va="center")
+            plt.text(
+                xi, yi, label, fontsize=fontsize, ha="left", va="center", color=color
+            )
         )  # Increased font size
 
     # Plt a single point at 1, 1,
-    plt.plot(1.0, 1.0, "ro", markersize=6)  # Red point
+    dark_green = (0, 0.75, 0)
+    plt.plot(1.0, 1.0, "o", markersize=6, color=dark_green)  # Green point
     plt.text(
-        1.05, 1.0, "Supervised", fontsize=fontsize, ha="left", va="center", color="r"
+        1.05,
+        1.0,
+        "Supervised (P-loss)",
+        fontsize=fontsize,
+        ha="left",
+        va="center",
+        color=dark_green,
     )
 
     # Log-log scales

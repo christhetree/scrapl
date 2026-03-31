@@ -38,7 +38,7 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl-loss` in the future.
 
 
-![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation.svg)
+![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
 
 _Figure 1: Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task. 
 Both axes are rescaled by the performance of a supervised model with the same number of parameters. 
