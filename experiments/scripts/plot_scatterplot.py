@@ -19,7 +19,7 @@ if __name__ == "__main__":
     # L1 theta
     p_loss_l1 = 20.505
     orig_coords = [
-        ("JTFS", 42.377, 0, 1731),
+        ("Full-tree Scattering (JTFS)", 42.377, 0, 1731),
         # ("SCRAPL (no $\\theta$-IS)", 73.809, 13.376, 89.82),
         ("SCRAPL", 65.68, 4.207, 89.82),
         ("MSS Linear", 370.14, 0.52049, 26.26),
@@ -87,18 +87,17 @@ if __name__ == "__main__":
     texts = []
     fontsize = 12.5
     for xi, yi, label in zip(x, y, names):
-        if label == "JTFS":
-            xi *= 0.83
+        color = "black"
+        if label == "Full-tree Scattering (JTFS)":
+            # xi *= 0.83  # This distance was used when the label was just "JTFS"
+            xi *= 0.425
+            color = "red"
         elif label == "SCRAPL":
             fontsize = 14
             xi *= 1.05
+            color = "blue"
         else:
             xi *= 1.05
-        color = "black"
-        if label == "JTFS":
-            color = "red"
-        elif label == "SCRAPL":
-            color = "blue"
         texts.append(
             plt.text(
                 xi, yi, label, fontsize=fontsize, ha="left", va="center", color=color

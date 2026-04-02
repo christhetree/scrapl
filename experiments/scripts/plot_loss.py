@@ -339,6 +339,7 @@ def plot_xy_vals(
 
     # ax.set_ylim(bottom=0.0)
     # ax.set_ylim(bottom=0.0, top=0.40)
+    # ax.set_ylim(bottom=0.0, top=0.30)
     # ax.set_yscale("log")
     # ax.set_yticks([0.20, 0.1414, 0.10, 0.07071, 0.05], ["0.20", "0.14", "0.10", "0.07", "0.05"])
     # ax.set_yticks([], minor=True)
@@ -387,14 +388,14 @@ if __name__ == "__main__":
         ("ploss", os.path.join(OUT_DIR, f"iclr_2026_rebuttal/ploss_adam_1e-5__texture_32_32_5_meso_b32.tsv")),
 
         # Chirplet
-        # ("lo_lo", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_lo.tsv")),
-        # ("lo_lo_b1_none", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_lo__probs_n_batches_1.tsv")),
-        # ("lo_med", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_med.tsv")),
-        # ("lo_med_b1_none", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_med__probs_n_batches_1.tsv")),
-        # ("hi_med", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_med.tsv")),
-        # ("hi_med_b1_none", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_med__probs_n_batches_1.tsv")),
-        # ("hi_hi", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_hi.tsv")),
-        # ("hi_hi_b1_none", os.path.join(OUT_DIR, f"iclr_2026/chirplet/scrapl_saga_pwa_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_hi__probs_n_batches_1.tsv")),
+        # ("Uniform Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_no_theta_is_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_lo.tsv")),
+        # ("$\\theta$-Importance Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_lo.tsv")),
+        # ("Uniform Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_no_theta_is_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_med.tsv")),
+        # ("$\\theta$-Importance Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_1e-4__chirplet2_32_32_5_meso_b32_am_lo_fm_med.tsv")),
+        # ("Uniform Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_no_theta_is_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_med.tsv")),
+        # ("$\\theta$-Importance Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_med.tsv")),
+        # ("Uniform Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_no_theta_is_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_hi.tsv")),
+        # ("$\\theta$-Importance Sampling", os.path.join(OUT_DIR, f"iclr_2026/exp_2_chirplet/scrapl_1e-4__chirplet2_32_32_5_meso_b32_am_hi_fm_hi.tsv")),
 
         # DDSP 808
         # ("jtfs_mi", os.path.join(OUT_DIR, f"iclr_2026/exp_3_ddsp_808/jtfs_Jfr5_T2048_F1_log1p_nogm_724k_adamw_1e-4t5__mars_808_n681_b8_micro.tsv")),
