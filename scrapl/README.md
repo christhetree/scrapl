@@ -26,7 +26,9 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
-Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl-loss` in the future.
+An [experimental JAX SCRAPL loss with θ-IS warmup and path sampling](jax/README.md)
+is available in this checkout, with optional P-Adam gradient normalisation and
+P-SAGA gradient correction.
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -51,13 +53,31 @@ JTFS-based sound matching is evaluated only once._
 
 ## Installation
 
-You can install `scrapl-loss` using `pip`: 
+Choose a backend when installing from this checkout:
 
-```
-pip install scrapl-loss
+```sh
+git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
+pip install -e '.[torch]'
 ```
 
-The package requires Python 3.10 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
+The independent extras are:
+
+| Extra | Framework dependencies | Loss import |
+| --- | --- | --- |
+| `[torch]` | PyTorch only | `from scrapl import SCRAPLLoss` |
+| `[jax]` | JAX only | `from scrapl.jax import SCRAPLLoss` |
+| `[torch,jax]` | Both frameworks | Either API |
+
+For example, use `pip install -e '.[jax]'` for JAX, or
+`pip install -e '.[torch,jax,test]'` to run the full comparison test suite.
+The selector changes currently require this checkout and have not been published.
+
+The package requires Python 3.10 or higher, NumPy and SciPy. The Torch extra
+requires `2.8.0 <= torch < 3.0.0`; the JAX extra requires `jax >= 0.4.26`.
+A bare installation now includes neither framework. Existing PyTorch users
+should select `[torch]`; the `from scrapl import SCRAPLLoss` API is preserved.
+Importing `scrapl` alone loads neither framework. Accessing a backend without its
+extra installed reports the required installation command.
 
 
 ## Examples

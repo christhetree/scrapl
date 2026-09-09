@@ -1,5 +1,4 @@
 from kymatio.frontend.entry import ScatteringEntry
-from .torch_frontend import TimeFrequencyScraplTorch
 
 
 class TimeFrequencyScraplEntry(ScatteringEntry):
@@ -8,9 +7,16 @@ class TimeFrequencyScraplEntry(ScatteringEntry):
         backend = kwargs.get("backend", "torch")
 
         if backend == "torch":
+            from .torch_frontend import TimeFrequencyScraplTorch
+
             # Manually switch the class to your local Torch implementation
             self.__class__ = TimeFrequencyScraplTorch
             # Re-initialize with the new class
+            self.__init__(*args, **kwargs)
+        elif backend == "jax":
+            from .jax_frontend import TimeFrequencyScraplJax
+
+            self.__class__ = TimeFrequencyScraplJax
             self.__init__(*args, **kwargs)
         else:
             # Fallback to default behavior for other backends (will likely fail

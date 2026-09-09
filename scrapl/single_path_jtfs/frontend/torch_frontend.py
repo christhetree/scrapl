@@ -1,3 +1,7 @@
+from ..._dependencies import require_backend
+
+require_backend("torch")
+
 from kymatio.frontend.torch_frontend import ScatteringTorch
 from kymatio.scattering1d.frontend.base_frontend import ScatteringBase1D
 from kymatio.scattering1d.frontend.torch_frontend import TimeFrequencyScatteringTorch
@@ -19,7 +23,7 @@ class TimeFrequencyScraplTorch(TimeFrequencyScraplBase, TimeFrequencyScatteringT
         stride_fr=None,
         out_type="array",
         format="joint",
-        backend="torch"
+        backend="torch",
     ):
         ScatteringTorch.__init__(self)
         TimeFrequencyScraplBase.__init__(
