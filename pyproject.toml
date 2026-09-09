@@ -21,7 +21,6 @@ keywords = [
 ]
 
 dependencies = [
-    "torch>=2.8.0,<3.0.0",
     "numpy>=0.14",
     "scipy>=1.2.1",
     "appdirs",
@@ -30,6 +29,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+torch = [
+    "torch>=2.8.0,<3.0.0",
+]
+jax = [
+    "jax>=0.4.26",
+]
 test = [
     "pytest>=9.0.2",
 ]

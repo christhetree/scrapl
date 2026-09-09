@@ -35,7 +35,9 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
-Additional scattering transform implementations and support for other machine learning frameworks (e.g. JAX) may be added to `scrapl-loss` in the future.
+An [experimental JAX SCRAPL loss with θ-IS warmup and path sampling](scrapl/jax/README.md)
+is available in this checkout, with optional P-Adam gradient normalisation and
+P-SAGA gradient correction.
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -77,13 +79,31 @@ Accepted to the International Conference on Learning Representations (ICLR), Rio
 
 ## Installation
 
-You can install `scrapl-loss` using `pip`: 
+Choose a backend when installing from this checkout:
 
-```
-pip install scrapl-loss
+```sh
+git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
+pip install -e '.[torch]'
 ```
 
-The package requires Python 3.10 or higher and `2.8.0 <= torch < 3.0.0` as well as `numpy` and `scipy`.
+The independent extras are:
+
+| Extra | Framework dependencies | Loss import |
+| --- | --- | --- |
+| `[torch]` | PyTorch only | `from scrapl import SCRAPLLoss` |
+| `[jax]` | JAX only | `from scrapl.jax import SCRAPLLoss` |
+| `[torch,jax]` | Both frameworks | Either API |
+
+For example, use `pip install -e '.[jax]'` for JAX, or
+`pip install -e '.[torch,jax,test]'` to run the full comparison test suite.
+The selector changes currently require this checkout and have not been published.
+
+The package requires Python 3.10 or higher, NumPy and SciPy. The Torch extra
+requires `2.8.0 <= torch < 3.0.0`; the JAX extra requires `jax >= 0.4.26`.
+A bare installation now includes neither framework. Existing PyTorch users
+should select `[torch]`; the `from scrapl import SCRAPLLoss` API is preserved.
+Importing `scrapl` alone loads neither framework. Accessing a backend without its
+extra installed reports the required installation command.
 
 
 ## Examples
@@ -545,8 +565,8 @@ We make our code and audio samples available and provide SCRAPL as a Python pack
    `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/scrapl/pytorch_hessian_eigenthings/`\
    `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/fadtk/`
 1. The experiments source code is currently not documented, but don't hesitate to open an issue if you have any questions or comments.
-1. A PyPI Python package of the SCRAPL algorithm for the joint time-frequency scattering transform (JTFS) is available and can be installed with:\
-   `pip install scrapl-loss`\
+1. The SCRAPL package for the joint time-frequency scattering transform (JTFS) can be installed from this checkout with:\
+   `pip install -e '.[torch]'`\
    The package documentation can be found in the [`scrapl/`](./scrapl) directory.
 
 If you would like to learn more about wavelets, scattering transforms, and deep learning for music and audio, check out our ISMIR 2023 tutorial:\

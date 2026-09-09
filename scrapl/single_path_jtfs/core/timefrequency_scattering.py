@@ -94,7 +94,7 @@ def jtfs_singlepath(
             Y_2_list.append(U_2_c)
 
     # Stack Y_2_list along the n1 axis
-    Y_2 = backend.stack(Y_2_list)
+    Y_2 = backend.stack(Y_2_list, dim=2)
     n1_max = len(Y_2_list)
 
     # Swap time and frequency axis
