@@ -1,6 +1,8 @@
 import shutil
 
-import torch as tr
+import pytest
+
+tr = pytest.importorskip("torch")
 from torch import nn
 
 from scrapl import SCRAPLLoss
