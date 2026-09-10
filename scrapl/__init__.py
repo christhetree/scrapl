@@ -10,6 +10,20 @@ _submodule_paths = [
 for _submodule_path in _submodule_paths:
     sys.path.append(_submodule_path)
 
-from .scrapl_loss import SCRAPLLoss
-
 __all__ = ["SCRAPLLoss"]
+
+
+def __getattr__(name):
+    if name != "SCRAPLLoss":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    from ._dependencies import require_backend
+
+    require_backend("torch")
+    from .scrapl_loss import SCRAPLLoss
+
+    globals()[name] = SCRAPLLoss
+    return SCRAPLLoss
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))
