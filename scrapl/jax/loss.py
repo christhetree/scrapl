@@ -1,16 +1,15 @@
 import math
-from dataclasses import dataclass, field
 from functools import partial
 from numbers import Integral
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 
 from ..single_path_jtfs.jax import TimeFrequencyScrapl
 
 
-@dataclass(frozen=True, eq=False)
-class SCRAPLLoss:
+class SCRAPLLoss(eqx.Module):
     """Single-path scattering loss with explicit JAX keys and probabilities.
 
     Construct once outside JIT. Call with either ``key`` for a random path or
@@ -22,46 +21,70 @@ class SCRAPLLoss:
     index traces only that path. Invalid Python indices raise ValueError;
     invalid scalar array indices produce NaN, including inside JIT.
 
-    Configuration is frozen. No keys, path counts or gradient histories are
-    stored or updated. Split keys in the training loop for fresh samples.
+    Configuration is frozen and registered as an Equinox PyTree module.
     """
 
-    shape: int
-    J: int
-    Q1: int
-    Q2: int
-    J_fr: int
-    Q_fr: int
-    T: int | str | None = None
-    F: int | str | None = None
-    p: float = 2
-    use_rho_log1p: bool = False
-    log1p_eps: float = 1e-3
-    jtfs: TimeFrequencyScrapl = field(init=False, repr=False)
-    scrapl_keys: tuple[tuple[int, int], ...] = field(init=False)
+    shape: int = eqx.field(static=True)
+    J: int = eqx.field(static=True)
+    Q1: int = eqx.field(static=True)
+    Q2: int = eqx.field(static=True)
+    J_fr: int = eqx.field(static=True)
+    Q_fr: int = eqx.field(static=True)
+    T: int | str | None = eqx.field(static=True, default=None)
+    F: int | str | None = eqx.field(static=True, default=None)
+    p: float = eqx.field(static=True, default=2)
+    use_rho_log1p: bool = eqx.field(static=True, default=False)
+    log1p_eps: float = eqx.field(static=True, default=1e-3)
+    jtfs: TimeFrequencyScrapl = eqx.field(static=True, init=False, repr=False)
+    scrapl_keys: tuple[tuple[int, int], ...] = eqx.field(static=True, init=False)
 
-    def __post_init__(self):
-        if not isinstance(self.shape, Integral) or self.shape <= 0:
+    def __init__(
+        self,
+        shape: int,
+        J: int,
+        Q1: int,
+        Q2: int,
+        J_fr: int,
+        Q_fr: int,
+        T: int | str | None = None,
+        F: int | str | None = None,
+        p: float = 2,
+        use_rho_log1p: bool = False,
+        log1p_eps: float = 1e-3,
+    ):
+        if not isinstance(shape, Integral) or shape <= 0:
             raise ValueError("shape must be a positive integer sample count")
-        if math.isnan(self.p) or self.p < 1:
+        if math.isnan(p) or p < 1:
             raise ValueError("p must be at least 1 (positive infinity is supported)")
-        if not math.isfinite(self.log1p_eps) or self.log1p_eps <= 0:
+        if not math.isfinite(log1p_eps) or log1p_eps <= 0:
             raise ValueError("log1p_eps must be finite and positive")
 
+        self.shape = shape
+        self.J = J
+        self.Q1 = Q1
+        self.Q2 = Q2
+        self.J_fr = J_fr
+        self.Q_fr = Q_fr
+        self.T = T
+        self.F = F
+        self.p = p
+        self.use_rho_log1p = use_rho_log1p
+        self.log1p_eps = log1p_eps
+
         jtfs = TimeFrequencyScrapl(
-            shape=(self.shape,),
-            J=self.J,
-            Q=(self.Q1, self.Q2),
-            J_fr=self.J_fr,
-            Q_fr=self.Q_fr,
-            T=self.T,
-            F=self.F,
+            shape=(shape,),
+            J=J,
+            Q=(Q1, Q2),
+            J_fr=J_fr,
+            Q_fr=Q_fr,
+            T=T,
+            F=F,
         )
         keys = tuple(key for key in jtfs.meta()["key"] if len(key) == 2)
         if not keys:
             raise ValueError("The filter bank contains no second-order SCRAPL paths")
-        object.__setattr__(self, "jtfs", jtfs)
-        object.__setattr__(self, "scrapl_keys", keys)
+        self.jtfs = jtfs
+        self.scrapl_keys = keys
 
     @property
     def n_paths(self) -> int:
@@ -97,14 +120,25 @@ class SCRAPLLoss:
             coef = jnp.log1p(coef / self.log1p_eps)
             target_coef = jnp.log1p(target_coef / self.log1p_eps)
         difference = (target_coef - coef).reshape((coef.shape[0], -1))
+        # For p == 1 (L1 norm), compute the sum of absolute differences directly
+        # with exact zero handling.
         if self.p == 1:
             magnitude = jnp.where(difference == 0, 0, jnp.abs(difference))
             return magnitude.sum(axis=-1).mean()
+
+        # For p > 1 (e.g., L2 norm), d/dx ||x||_p divides by ||x||_p^(p-1), causing
+        # 0/0 = NaN gradients when difference is zero (i.e. target == prediction).
+        # We use JAX's "safe norm" (double-where) pattern:
+        # 1. Identify non-zero sample differences in the batch
         nonzero = jnp.any(difference != 0, axis=-1)
+        # 2. Substitute a safe dummy vector (all ones) for all-zero samples so
+        #    the norm and its backward pass evaluate with finite, non-zero gradients
         safe_difference = jnp.where(
             nonzero[:, None], difference, jnp.ones_like(difference)
         )
+        # 3. Evaluate Lp norm safely
         distance = jnp.linalg.norm(safe_difference, ord=self.p, axis=-1)
+        # 4. Zero out the loss for samples that were genuinely zero
         return jnp.where(nonzero, distance, 0).mean()
 
     def __call__(
