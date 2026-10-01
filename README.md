@@ -83,7 +83,7 @@ Choose a backend when installing from this checkout:
 
 ```sh
 git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
-pip install -e '.[torch]'
+uv sync --extra torch
 ```
 
 The independent extras are:
@@ -94,8 +94,8 @@ The independent extras are:
 | `[jax]` | JAX only | `from scrapl.jax import SCRAPLLoss` |
 | `[torch,jax]` | Both frameworks | Either API |
 
-For example, use `pip install -e '.[jax]'` for JAX, or
-`pip install -e '.[torch,jax,test]'` to run the full comparison test suite.
+For example, use `uv sync --extra jax` for JAX, or
+`uv sync --extra torch --extra jax --extra test` to run the full comparison test suite.
 The selector changes currently require this checkout and have not been published.
 
 The package requires Python 3.10 or higher, NumPy and SciPy. The Torch extra
@@ -559,7 +559,7 @@ We make our code and audio samples available and provide SCRAPL as a Python pack
    `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/experiments/`
 1. The experiments source code is currently not documented, but don't hesitate to open an issue if you have any questions or comments.
 1. The SCRAPL package for the joint time-frequency scattering transform (JTFS) can be installed from this checkout with:\
-   `pip install -e '.[torch]'`\
+   `uv sync --extra torch`\
    The package documentation can be found in the [`scrapl/`](./scrapl) directory.
 
 If you would like to learn more about wavelets, scattering transforms, and deep learning for music and audio, check out our ISMIR 2023 tutorial:\

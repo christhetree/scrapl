@@ -16,9 +16,7 @@ Install from this checkout, including the pinned submodules:
 
 ```sh
 git submodule update --init scrapl/kymatio
-uv venv --python 3.12 .venv
-source .venv/bin/activate
-uv pip install -e '.[jax]'
+uv sync --extra jax
 ```
 
 Construct the transform outside JIT, then compile with a fixed path:
@@ -66,9 +64,8 @@ Install both frameworks to run the parity checks:
 
 ```sh
 git submodule update --init scrapl/pytorch_hessian_eigenthings
-source .venv/bin/activate
-uv pip install -e '.[torch,jax,test]'
-python -m pytest tests/test_jax_single_path_jtfs.py
+uv sync --extra torch --extra jax --extra test
+uv run pytest tests/test_jax_single_path_jtfs.py
 ```
 
 These checks cover all 14 second-order paths in a small filter bank with three
