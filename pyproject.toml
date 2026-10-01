@@ -31,7 +31,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest>=9.0.2",
+    "pytest>=9.1.1",
 ]
 
 [project.urls]
@@ -39,8 +39,33 @@ Website = "https://christhetree.github.io/scrapl/"
 Repository = "https://github.com/christhetree/scrapl/"
 "ICLR 2026 Paper" = "https://openreview.net/forum?id=RuYwbd5xYa"
 
+# Paper experiment dependencies ========================================================
+[dependency-groups]
+experiments = [
+    "auraloss>=0.4.0",
+    "black>=26.5.1",
+    "einops>=0.8.2",
+    "hypy-utils>=1.0.29",
+    "jsonargparse[signatures]>=4.52.0",
+    "librosa>=0.10.2.post1",
+    "lightning>=2.6.6",
+    "matplotlib>=3.10.9",
+    "msclap>=1.3.4",
+    "nnaudio>=0.3.4",
+    "nvitop>=1.7.1",
+    "pandas>=2.3.3",
+    "pyloudnorm>=0.2.0",
+    "tensorboard>=2.21.0",
+    "torch==2.8.0",
+    "torchaudio==2.8.0",
+    "torchcodec>=0.17.0",
+    "torchvision>=0.23.0",
+    "wandb>=0.30.0",
+]
+
+# Misc. ================================================================================
 [build-system]
-requires = ["uv_build"]
+requires = ["uv_build>=0.12.0,<0.13.0"]
 build-backend = "uv_build"
 
 # Required since the scrapl package is not located in a src subdirectory.
@@ -48,6 +73,21 @@ build-backend = "uv_build"
 module-name = "scrapl"
 module-root = "."
 
+[tool.uv]
+# Tells uv's resolver to target Python 3.10 for the local lockfile
+python-preference = "only-managed" # optional: strictly use uv-managed Pythons
+
+# Local workspace members (e.g. Git submodules included in development)
+[tool.uv.workspace]
+members = [
+    "fadtk",
+]
+
+# Configure workspace sources to resolve submodules in editable mode
+[tool.uv.sources]
+fadtk = { workspace = true, editable = true }
+
+# Pytest configuration
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"

@@ -2,7 +2,7 @@ import os
 import sys
 
 # This adds 'scrapl/kymatio' & 'scrapl/pytorch_hessian_eigenthings' to the Python path.
-# This allows the internal code import them successfully.
+# This allows the internal code to import them successfully.
 _submodule_paths = [
     os.path.join(os.path.dirname(__file__), "kymatio"),
     os.path.join(os.path.dirname(__file__), "pytorch_hessian_eigenthings"),

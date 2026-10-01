@@ -521,29 +521,22 @@ We make our code and audio samples available and provide SCRAPL as a Python pack
 
 ## Instructions for Reproducibility
 
+1. Experiments were conducted on Linux with Python 3.10, PyTorch 2.8.0, and CUDA 12.4.
 1. Clone this repository and open its directory.
 1. Be sure to initialize the submodules:\
    `git submodule update --init --recursive`
-1. Install the requirements:
-   <br>`conda env create --file=conda_env_gpu.yml`
-   <br>or\
-   `conda env create --file=conda_env_cpu.yml`
-   <br>depending on your computing environment.
-   <br>For posterity, `requirements_all_gpu.txt` and `requirements_all_cpu.txt` are also provided.
+1. Install the environment and dependencies using [`uv`](https://docs.astral.sh/uv/):\
+   `uv sync --group experiments`
 1. The source code for the SCRAPL algorithm can be explored in the [`scrapl/`](./scrapl) directory.
 1. The source code for the three experiments in the paper can be explored in the [`experiments/`](./experiments) directory.
 1. All experiment config files can be found in the [`experiments/configs/`](./experiments/configs) directory.
 1. The dataset for the Roland TR-808 sound matching task can be found [here](https://samplesfrommars.com/products/tr-808-samples) and needs to be placed in [`experiments/data/808_dataset/`](./experiments/data/808_dataset/file_list.txt).
-1. Create an out directory (`mkdir experiments/out`).
+1. Create an out directory (`mkdir -p experiments/out`).
 1. Models for each experiment can be trained and evaluated by modifying [`experiments/scripts/train.py`](./experiments/scripts/train.py)\
    and the corresponding `experiments/configs/.../train_ ... .yml` config file and then running:\
-   `python experiments/scripts/train.py`\
-   Make sure your PYTHONPATH has been set correctly by running commands like:\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/experiments/`\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/scrapl/`\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/scrapl/kymatio/`\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/scrapl/pytorch_hessian_eigenthings/`\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/fadtk/`
+   `uv run python train.py` from the `experiments/scripts/` directory.\
+   Make sure your PYTHONPATH has been set correctly by running a command like:\
+   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/experiments/`
 1. The experiments source code is currently not documented, but don't hesitate to open an issue if you have any questions or comments.
 1. A PyPI Python package of the SCRAPL algorithm for the joint time-frequency scattering transform (JTFS) is available and can be installed with:\
    `pip install scrapl-loss`\
