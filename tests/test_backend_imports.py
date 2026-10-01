@@ -24,6 +24,11 @@ sys.meta_path.insert(0, BlockFrameworks())
 """
 
 
+def is_backend_installed(name):
+    spec = importlib.util.find_spec(name)
+    return spec is not None and spec.origin is not None
+
+
 def run_without(blocked, script):
     result = subprocess.run(
         [sys.executable, "-c", IMPORT_BLOCKER + textwrap.dedent(script), blocked],
@@ -44,54 +49,63 @@ def test_installed_metadata_keeps_framework_dependencies_independent(extra):
             active.add(requirement.name)
     assert ("torch" in active) == (extra == "torch")
     assert ("jax" in active) == (extra == "jax")
+    assert ("pytest" in active) == (extra == "test")
 
 
 def test_base_imports_do_not_load_a_framework():
     run_without(
-        "torch,jax,hessian_eigenthings",
+        "torch,jax,scipy,hessian_eigenthings",
         """
+        import sys
         import scrapl
-        from scrapl.single_path_jtfs import TimeFrequencyScrapl
+        from scrapl import single_path_jtfs
 
-        assert 'SCRAPLLoss' in dir(scrapl)
-        assert not hasattr(scrapl, 'unknown_attribute')
-        assert not blocked.intersection(sys.modules)
+        loaded = set(sys.modules)
+        assert not blocked.intersection(loaded)
+        assert "scrapl.scrapl_loss" not in loaded
+        assert "scrapl.torch" not in loaded
+        assert "scrapl.single_path_jtfs.torch" not in loaded
+        assert "scrapl.single_path_jtfs.jax" not in loaded
+        assert "scrapl.jax" not in loaded
+        assert "SCRAPLLoss" in dir(scrapl)
+        assert not hasattr(scrapl, "unknown_attribute")
     """,
     )
 
 
-@pytest.mark.parametrize("backend", ["torch", "jax"])
-def test_missing_framework_reports_the_required_extra(backend):
+@pytest.mark.parametrize(
+    "backend, expression",
+    [
+        ("torch", "from scrapl import SCRAPLLoss"),
+        ("torch", "import scrapl; scrapl.SCRAPLLoss"),
+        ("torch", "import scrapl.torch"),
+        ("torch", "from scrapl.torch import SCRAPLLoss"),
+        ("torch", "import scrapl.scrapl_loss"),
+        ("torch", "import scrapl.single_path_jtfs.torch"),
+        ("jax", "import scrapl.jax"),
+        ("jax", "from scrapl.jax import SCRAPLLoss"),
+        ("jax", "import scrapl.single_path_jtfs.jax"),
+    ],
+)
+def test_missing_framework_reports_the_required_extra(backend, expression):
     run_without(
         backend,
         f"""
-        import importlib
-        from scrapl.single_path_jtfs import TimeFrequencyScrapl
-
-        def import_loss():
-            if {backend!r} == 'torch':
-                from scrapl import SCRAPLLoss
-            else:
-                from scrapl.jax import SCRAPLLoss
-
-        for action in (
-            import_loss,
-            lambda: importlib.import_module('scrapl.single_path_jtfs.{backend}'),
-            lambda: TimeFrequencyScrapl(backend={backend!r}),
-        ):
-            try:
-                action()
-            except ModuleNotFoundError as error:
-                assert error.name == {backend!r}
-                assert 'scrapl-loss[{backend}]' in str(error)
-            else:
-                raise AssertionError('Missing backend should fail on use')
+        import sys
+        import pytest
+        try:
+            {expression}
+        except ModuleNotFoundError as error:
+            assert error.name == {backend!r}
+            assert 'scrapl-loss[{backend}]' in str(error)
+        else:
+            raise AssertionError('Missing backend should fail on use')
     """,
     )
 
 
 def test_jax_loss_and_transformations_work_without_torch():
-    if importlib.util.find_spec("jax") is None:
+    if not is_backend_installed("jax"):
         pytest.skip("JAX is not installed")
     run_without(
         "torch,hessian_eigenthings",
@@ -133,7 +147,7 @@ def test_jax_loss_and_transformations_work_without_torch():
 
 
 def test_torch_loss_and_legacy_import_work_without_jax():
-    if importlib.util.find_spec("torch") is None:
+    if not is_backend_installed("torch"):
         pytest.skip("PyTorch is not installed")
     run_without(
         "jax",
@@ -141,10 +155,11 @@ def test_torch_loss_and_legacy_import_work_without_jax():
         import torch
         import scrapl
         from scrapl import SCRAPLLoss
+        from scrapl.torch import SCRAPLLoss as TorchLoss
         from scrapl.scrapl_loss import SCRAPLLoss as DirectLoss
         from scrapl.single_path_jtfs.torch import TimeFrequencyScrapl
 
-        assert SCRAPLLoss is DirectLoss is scrapl.SCRAPLLoss
+        assert SCRAPLLoss is DirectLoss is scrapl.SCRAPLLoss is TorchLoss
         loss = SCRAPLLoss(
             shape=128, J=3, Q1=2, Q2=1, J_fr=1, Q_fr=1,
             use_rho_log1p=True, grad_mult=1,

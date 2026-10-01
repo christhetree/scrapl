@@ -21,9 +21,7 @@ installs both frameworks. A bare installation includes neither framework.
 
 ```sh
 git submodule update --init scrapl/kymatio
-uv venv --python 3.12 .venv
-source .venv/bin/activate
-uv pip install -e '.[jax]'
+uv sync --extra jax
 ```
 
 ## Training with uniform sampling
@@ -391,9 +389,8 @@ installed backend.
 
 ```sh
 git submodule update --init scrapl/pytorch_hessian_eigenthings
-source .venv/bin/activate
-uv pip install -e '.[torch,jax,test]'
-python -m pytest
+uv sync --extra torch --extra jax --extra test
+uv run pytest
 ```
 
 Tests compare all 14 paths of a small filter bank with PyTorch, including gradients

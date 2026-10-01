@@ -57,7 +57,7 @@ Choose a backend when installing from this checkout:
 
 ```sh
 git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
-pip install -e '.[torch]'
+uv sync --extra torch
 ```
 
 The independent extras are:
@@ -68,8 +68,8 @@ The independent extras are:
 | `[jax]` | JAX only | `from scrapl.jax import SCRAPLLoss` |
 | `[torch,jax]` | Both frameworks | Either API |
 
-For example, use `pip install -e '.[jax]'` for JAX, or
-`pip install -e '.[torch,jax,test]'` to run the full comparison test suite.
+For example, use `uv sync --extra jax` for JAX, or
+`uv sync --extra torch --extra jax --extra test` to run the full comparison test suite.
 The selector changes currently require this checkout and have not been published.
 
 The package requires Python 3.10 or higher, NumPy and SciPy. The Torch extra

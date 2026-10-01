@@ -1,3 +1,10 @@
+from ._dependencies import require_backend
+
+# Ensure the optional 'torch' dependency backend is installed before importing PyTorch
+# modules. If missing, this raises an informative ModuleNotFoundError with installation
+# instructions.
+require_backend("torch")
+
 import functools
 import logging
 import os
