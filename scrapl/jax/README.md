@@ -9,7 +9,7 @@ averages its distances over batch and channels. Inputs must have matching shapes
 This stage includes θ-IS warmup, uniform and importance sampling, fixed-path
 evaluation, optional `log1p` compression, JAX differentiation, P-Adam gradient
 normalisation and P-SAGA gradient correction. The loss itself returns ordinary
-gradients; P-Adam and P-SAGA are optional, explicit transformations applied after
+gradients; P-Adam and P-SAGA are optional, explicit Optax transformations applied after
 differentiation.
 
 ## Installation
@@ -23,6 +23,204 @@ installs both frameworks. A bare installation includes neither framework.
 git submodule update --init scrapl/kymatio
 uv sync --extra jax
 ```
+
+## Examples
+
+### Importing and initializing `SCRAPLLoss`
+
+Initialize `SCRAPLLoss` with the minimum required arguments:
+
+```python
+# Import SCRAPLLoss from the scrapl.jax Python module
+from scrapl.jax import SCRAPLLoss
+
+# Initialize SCRAPLLoss with the minimum required arguments
+scrapl_loss = SCRAPLLoss(
+    shape=48000,  # Length of x and x_target in samples
+    J=12,         # Number of octaves (1st and 2nd order temporal filters)
+    Q1=8,         # Wavelets per octave (1st order temporal filters)
+    Q2=2,         # Wavelets per octave (2nd order temporal filters)
+    J_fr=3,       # Number of octaves (2nd order frequential filters)
+    Q_fr=2,       # Wavelets per octave (2nd order frequential filters)
+)
+```
+
+### Calculating the loss for two signals
+
+In JAX, pseudo-randomness is managed explicitly using `jax.random.key`:
+
+```python
+import jax
+
+# Create two random arrays of shape (batch_size, num_channels, signal_length)
+key = jax.random.key(0)
+key_x, key_target, key_loss = jax.random.split(key, 3)
+x = jax.random.normal(key_x, (4, 1, 48000))
+x_target = jax.random.normal(key_target, (4, 1, 48000))
+
+# Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
+# passing a PRNG key will sample a random scattering path.
+loss = scrapl_loss(x, x_target, key=key_loss)
+print(f"SCRAPL loss: {float(loss):.4f}")
+```
+
+### `SCRAPLLoss` utility attributes and methods
+
+```python
+import jax
+
+print(f"Number of scattering paths: {scrapl_loss.n_paths}")
+print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
+
+# Sample a path index explicitly with a JAX PRNG key
+key = jax.random.key(42)
+path_idx = scrapl_loss.sample_path(key)
+print(f"Sampled path index: {int(path_idx)}")
+
+# Calculate the loss for a specific path index
+loss = scrapl_loss(x, x_target, path_idx=8)
+print(f"Loss for specific path: {float(loss):.6f}")
+```
+
+> [!NOTE]
+> Unlike the PyTorch version which is stateful (tracking `curr_path_idx`, `path_counts`, `state_dict`, and `clear()`), the JAX `SCRAPLLoss` is a pure, immutable Equinox module. Path sampling is explicit via `scrapl_loss.sample_path(key)` and all state lives cleanly in caller-managed PyTrees or Optax optimizer states.
+
+### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
+
+In JAX, $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are implemented as native [Optax](https://github.com/google-deepmind/optax) gradient transformations (`padam` and `psaga`). They do not require backward hooks or attaching parameters; instead, chain them directly into your Optax optimizer:
+
+```python
+import equinox as eqx
+import jax
+import optax
+from scrapl.jax import SCRAPLLoss, padam, psaga
+
+# Example loss and toy MLP model
+scrapl_loss = SCRAPLLoss(shape=1024, J=3, Q1=1, Q2=1, J_fr=2, Q_fr=1)
+key = jax.random.key(42)
+key_model, key_data, key_step = jax.random.split(key, 3)
+
+model = eqx.nn.MLP(
+    in_size=1024,
+    out_size=1024,
+    width_size=8,
+    depth=1,
+    activation=jax.nn.relu,
+    final_activation=jax.nn.tanh,
+    key=key_model,
+)
+
+# Chain P-Adam, P-SAGA, weight decay, and learning rate scaling
+optimiser = optax.chain(
+    padam(scrapl_loss.n_paths, b1=0.9, b2=0.999, eps=1e-8, grad_mult=1.0),
+    psaga(scrapl_loss.n_paths),
+    optax.add_decayed_weights(0.01),
+    optax.scale_by_learning_rate(1e-4),
+)
+opt_state = optimiser.init(eqx.filter(model, eqx.is_array))
+
+# Create input signals
+x = jax.random.normal(key_data, (4, 1, 1024))
+x_target = jax.random.normal(key_data, (4, 1, 1024))
+
+@eqx.filter_jit
+def train_step(model, opt_state, x, x_target, key):
+    path_key, _ = jax.random.split(key)
+    path_idx = scrapl_loss.sample_path(path_key)
+
+    def loss_fn(m):
+        x_hat = jax.vmap(m)(x.squeeze(1))[:, None, :]
+        return scrapl_loss(x_hat, x_target, path_idx=path_idx)
+
+    loss_val, grads = eqx.filter_value_and_grad(loss_fn)(model)
+    updates, opt_state = optimiser.update(
+        grads, opt_state, params=eqx.filter(model, eqx.is_array), path_idx=path_idx
+    )
+    model = eqx.apply_updates(model, updates)
+    return model, opt_state, loss_val
+
+model, opt_state, loss_val = train_step(model, opt_state, x, x_target, key_step)
+print(f"Step Loss: {float(loss_val):.4f}")
+```
+
+### Importance Sampling Warmup ($\theta$-IS)
+
+The SCRAPL algorithm includes an architecture-informed importance sampling heuristic ($\theta$-IS) that estimates the loss landscape curvature with respect to synthesizer controls $\theta_\text{synth}$ across all scattering paths.
+
+In JAX, `warmup_lc_hvp` runs curvature estimation and returns a `ThetaISResult` containing `probs`, `curvatures`, and `relative_residuals`:
+
+```python
+import equinox as eqx
+import jax
+import jax.numpy as jnp
+from scrapl.jax import SCRAPLLoss, warmup_lc_hvp
+
+# Setup dimensions
+bs = 4
+n_ch = 1
+n_samples = 8096
+n_theta = 3
+n_batches = 1
+
+# Provide an encoder that outputs n_theta parameters
+encoder = eqx.nn.MLP(
+    in_size=n_samples,
+    out_size=n_theta,
+    width_size=n_theta,
+    depth=1,
+    activation=jax.nn.relu,
+    final_activation=jax.nn.sigmoid,
+    key=jax.random.key(1),
+)
+
+# Provide a differentiable synthesizer taking n_theta parameters
+decoder = eqx.nn.MLP(
+    in_size=n_theta,
+    out_size=n_samples,
+    width_size=n_theta,
+    depth=1,
+    activation=jax.nn.relu,
+    final_activation=jax.nn.tanh,
+    key=jax.random.key(2),
+)
+
+# Functional encoder and synthesiser functions
+def theta_fn(params, x):
+    enc = eqx.combine(params, encoder)
+    return jax.vmap(enc)(x.squeeze(1))
+
+def synth_fn(theta):
+    return jax.vmap(decoder)(theta)[:, None, :]
+
+# Warmup data: (n_batches, batch_size, channels, samples)
+xs = jax.random.normal(jax.random.key(3), (n_batches, bs, n_ch, n_samples))
+params = eqx.filter(encoder, eqx.is_array)
+
+loss_fn = SCRAPLLoss(shape=n_samples, J=3, Q1=1, Q2=1, J_fr=2, Q_fr=1)
+print(f"Uniform path sampling probability: {float(loss_fn.unif_prob):.6f}")
+
+# Run warmup
+warmup = warmup_lc_hvp(
+    loss_fn,
+    params,
+    theta_fn,
+    synth_fn,
+    xs,
+    key=jax.random.key(4),
+    n_iter=20,
+    min_prob_frac=0.0,
+)
+
+print(
+    f"[min, max] path sampling probabilities (after warmup): "
+    f"[{float(warmup.probs.min()):.6f}, {float(warmup.probs.max()):.6f}]"
+)
+```
+
+> [!NOTE]
+> In PyTorch, multi-process path distribution files (`vals_{path_idx}.pt`) are saved and loaded from disk via `load_probs_from_warmup_dir`. In JAX, `warmup_lc_hvp` compiles and computes the full path distribution directly, returning `warmup.probs` as an array which can be passed to `loss_fn(..., probs=warmup.probs)` or saved/loaded with `jnp.save` / `jnp.load`.
+
+---
 
 ## Training with uniform sampling
 
@@ -198,21 +396,24 @@ PyTorch, so finite-iteration estimates are not expected to be bit-identical.
 
 ## P-Adam gradient normalisation
 
-`PAdam` keeps separate first and second moments for each path and parameter leaf.
-Apply it to the gradient PyTree after differentiating the selected path's loss.
-Its output is a gradient direction: apply a plain SGD step afterwards. Do not feed
+`padam` creates an Optax transformation keeping separate first and second moments for each path and parameter leaf.
+Its output is a normalised gradient direction: chain with `optax.scale_by_learning_rate` and apply with `optax.apply_updates`. Do not feed
 the normalised gradients through another Adam optimiser.
 
 Continuing from the warmup example above:
 
 ```python
-from scrapl.jax import PAdam
+import optax
+from scrapl.jax import padam
 
-p_adam = PAdam(loss_fn.n_paths, b1=0.9, b2=0.999, eps=1e-8, grad_mult=1.0)
-p_adam_state = p_adam.init(params)
+optimiser = optax.chain(
+    padam(loss_fn.n_paths, b1=0.9, b2=0.999, eps=1e-8, grad_mult=1.0),
+    optax.scale_by_learning_rate(1e-3),
+)
+opt_state = optimiser.init(params)
 
 @jax.jit
-def p_adam_step(params, state, batch, key, probs):
+def p_adam_step(params, opt_state, batch, key, probs):
     key, path_key = jax.random.split(key)
     path_idx = loss_fn.sample_path(path_key, probs=probs)
 
@@ -221,16 +422,16 @@ def p_adam_step(params, state, batch, key, probs):
         return loss_fn(batch, prediction, path_idx=path_idx)
 
     value, grads = jax.value_and_grad(objective)(params)
-    directions, state = p_adam.update(grads, state, path_idx=path_idx)
-    params = jax.tree_util.tree_map(lambda p, g: p - 1e-3 * g, params, directions)
-    return params, state, key, value
+    updates, opt_state = optimiser.update(grads, opt_state, params=params, path_idx=path_idx)
+    params = optax.apply_updates(params, updates)
+    return params, opt_state, key, value
 
-params, p_adam_state, key, value = p_adam_step(
-    params, p_adam_state, xs[0], key, warmup.probs
+params, opt_state, key, value = p_adam_step(
+    params, opt_state, xs[0], key, warmup.probs
 )
 ```
 
-Sample the path once and pass that same index to both the loss and P-Adam. The
+Sample the path once and pass that same index to both the loss and the Optax update. The
 example accepts θ-IS probabilities; passing `None` as `probs` uses uniform
 sampling. No hooks or parameter attachment are needed.
 
@@ -261,7 +462,7 @@ to `1e8`. Scaling acts before the moment updates and changes the effective role
 of epsilon, so it can matter for tiny raw scattering gradients. Decay complements
 and bias corrections use `expm1` to retain precision for small fractional times.
 
-`PAdamState` is a JAX PyTree containing `count`, `last_steps`, `m` and `v`. Save it
+`PAdamState` is a NamedTuple containing `count`, `last_steps`, `m` and `v`. Save it
 alongside parameters, PRNG keys, sampling probabilities and the P-Adam/loss
 configuration. Restored NumPy array leaves are accepted as well. Use `init(params)`
 only when starting or deliberately resetting the moment history.
@@ -275,23 +476,26 @@ unchanged state. Treat NaN directions as a failed step before updating parameter
 
 ## P-SAGA gradient correction
 
-`PSAGA` keeps the most recent incoming gradient for each path and parameter leaf.
-Use it on its own after differentiation, or after P-Adam to match the combined
-PyTorch hook. Its output is a gradient direction for plain SGD.
+`psaga` creates an Optax transformation keeping the most recent incoming gradient for each path and parameter leaf.
+Use it on its own after differentiation, or chain it after `padam` to match the combined
+PyTorch hook.
 
 Continuing with the encoder, synthesiser and warmup probabilities above, this
-example starts fresh optimiser histories and enables both transformations:
+example starts fresh optimiser histories and enables both transformations via `optax.chain`:
 
 ```python
-from scrapl.jax import PAdam, PSAGA
+import optax
+from scrapl.jax import padam, psaga
 
-p_adam = PAdam(loss_fn.n_paths, grad_mult=1.0)
-p_saga = PSAGA(loss_fn.n_paths)
-p_adam_state = p_adam.init(params)
-p_saga_state = p_saga.init(params)
+optimiser = optax.chain(
+    padam(loss_fn.n_paths, grad_mult=1.0),
+    psaga(loss_fn.n_paths),
+    optax.scale_by_learning_rate(1e-3),
+)
+opt_state = optimiser.init(params)
 
 @jax.jit
-def p_saga_step(params, adam_state, saga_state, batch, key, probs):
+def p_saga_step(params, opt_state, batch, key, probs):
     key, path_key = jax.random.split(key)
     path_idx = loss_fn.sample_path(path_key, probs=probs)
 
@@ -300,23 +504,22 @@ def p_saga_step(params, adam_state, saga_state, batch, key, probs):
         return loss_fn(batch, prediction, path_idx=path_idx)
 
     value, grads = jax.value_and_grad(objective)(params)
-    grads, adam_state = p_adam.update(grads, adam_state, path_idx=path_idx)
-    directions, saga_state = p_saga.update(grads, saga_state, path_idx=path_idx)
-    params = jax.tree_util.tree_map(lambda p, g: p - 1e-3 * g, params, directions)
-    return params, adam_state, saga_state, key, value
+    updates, opt_state = optimiser.update(grads, opt_state, params=params, path_idx=path_idx)
+    params = optax.apply_updates(params, updates)
+    return params, opt_state, key, value
 
-params, p_adam_state, p_saga_state, key, value = p_saga_step(
-    params, p_adam_state, p_saga_state, xs[0], key, warmup.probs
+params, opt_state, key, value = p_saga_step(
+    params, opt_state, xs[0], key, warmup.probs
 )
 ```
 
-For P-SAGA alone, omit the `p_adam.update` line; P-SAGA then receives raw
+For P-SAGA alone, omit the `padam` transform in the chain; P-SAGA then receives raw
 gradients. To reproduce a PyTorch `grad_mult` setting without P-Adam, scale every
 gradient leaf before passing it to P-SAGA. With P-Adam enabled, set its
 `grad_mult` argument instead. Apply scaling once, before either transformation.
 P-SAGA has no additional gradient multiplier.
 
-The same scalar `path_idx` must select the loss and both transformations. P-SAGA
+The same scalar `path_idx` must select the loss and the Optax update. P-SAGA
 records paths on successful updates; loss evaluation and warmup do not mark paths
 as seen. As with P-Adam, parity assumes one forward/backward training pass per
 update, processing every gradient leaf. Unused leaves should be zero arrays.
@@ -344,7 +547,7 @@ uses probabilities in its correction. This matches PyTorch and does not add an
 inverse-probability correction or an unbiased-gradient guarantee. The sampler
 does not force every path to be visited before allowing repeats.
 
-`PSAGAState` is a JAX PyTree with `seen`, a boolean vector of length `n_paths`, and
+`PSAGAState` is a NamedTuple with `seen`, a boolean vector of length `n_paths`, and
 `path_grads`, a parameter-shaped PyTree with a leading path axis on every leaf.
 Save it alongside parameters, P-Adam state if enabled, PRNG keys, probabilities
 and configuration. Restored NumPy array leaves are accepted. Reset the histories

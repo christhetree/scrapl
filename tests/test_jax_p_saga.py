@@ -1,5 +1,4 @@
 import pickle
-from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -8,9 +7,10 @@ torch = pytest.importorskip("torch")
 
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
+optax = pytest.importorskip("optax")
 
 from scrapl import SCRAPLLoss as TorchLoss
-from scrapl.jax import PAdam, PSAGA, PSAGAState, SCRAPLLoss
+from scrapl.jax import PSAGAState, SCRAPLLoss, padam, psaga
 
 
 def assert_tree_close(actual, expected, **kwargs):
@@ -33,7 +33,7 @@ def params():
 
 
 def test_new_and_revisited_paths_use_reference_denominator():
-    transform = PSAGA(4)
+    transform = psaga(4)
     state = transform.init(jnp.asarray(0.0))
     update = jax.jit(transform.update)
     for index, gradient, expected in [
@@ -56,7 +56,7 @@ def test_new_and_revisited_paths_use_reference_denominator():
 
 
 def test_single_path_reduces_to_incoming_gradient(params):
-    transform = PSAGA(1)
+    transform = psaga(1)
     state = transform.init(params)
     for scale in (1.0, -2.0, 0.0, 3.0):
         gradient = jax.tree_util.tree_map(lambda p: p * scale, params)
@@ -88,8 +88,8 @@ def test_updates_and_history_match_pytorch_hooks(params, use_p_adam, grad_mult):
             for p in jax.tree_util.tree_leaves(params)
         ]
     )
-    saga = PSAGA(reference.n_paths)
-    adam = PAdam(reference.n_paths)
+    saga = psaga(reference.n_paths)
+    adam = padam(reference.n_paths)
     state, adam_state = saga.init(params), adam.init(params)
 
     @jax.jit
@@ -142,7 +142,7 @@ def test_updates_and_history_match_pytorch_hooks(params, use_p_adam, grad_mult):
 
 
 def test_checkpoint_continuation_and_input_immutability(params):
-    saga, adam = PSAGA(5), PAdam(5)
+    saga, adam = psaga(5), padam(5)
     initial = (saga.init(params), adam.init(params))
     snapshot = jax.device_get(initial)
 
@@ -176,7 +176,7 @@ def test_real_loss_training_matches_pytorch_forward_backward_steps(use_p_adam):
     theta = jnp.asarray(-1.0)
     torch_theta = torch.nn.Parameter(torch.tensor(-1.0))
     reference.attach_params([torch_theta])
-    saga, adam = PSAGA(loss.n_paths), PAdam(loss.n_paths)
+    saga, adam = psaga(loss.n_paths), padam(loss.n_paths)
     saga_state, adam_state = saga.init(theta), adam.init(theta)
     optimiser = torch.optim.SGD([torch_theta], lr=0.01)
 
@@ -224,7 +224,7 @@ def test_real_loss_training_matches_pytorch_forward_backward_steps(use_p_adam):
 def test_jitted_weighted_sampling_scan_reduces_full_path_mean(use_p_adam):
     loss = SCRAPLLoss(shape=128, J=3, Q1=2, Q2=1, J_fr=1, Q_fr=1, use_rho_log1p=True)
     target = jax.random.normal(jax.random.key(8), (1, 1, 128))
-    saga, adam = PSAGA(loss.n_paths), PAdam(loss.n_paths)
+    saga, adam = psaga(loss.n_paths), padam(loss.n_paths)
     initial_theta = jnp.asarray(-1.0)
     initial = (saga.init(initial_theta), adam.init(initial_theta))
     probs = jnp.asarray([0.4, 0.1, 0.2, 0.15, 0.15])
@@ -266,8 +266,26 @@ def test_jitted_weighted_sampling_scan_reduces_full_path_mean(use_p_adam):
     assert_tree_close(states, before, rtol=0, atol=0)
 
 
+def test_psaga_optax_chain_compatibility(params):
+    transform = psaga(n_paths=5)
+    opt = optax.chain(
+        transform,
+        optax.scale_by_learning_rate(0.05),
+    )
+    state = opt.init(params)
+    grads = jax.tree_util.tree_map(lambda p: jnp.ones_like(p), params)
+    updates, new_state = opt.update(grads, state, params=params, path_idx=jnp.asarray(0))
+    updated_params = optax.apply_updates(params, updates)
+    for p, up, g in zip(
+        jax.tree_util.tree_leaves(params),
+        jax.tree_util.tree_leaves(updated_params),
+        jax.tree_util.tree_leaves(grads),
+    ):
+        np.testing.assert_allclose(up, p - 0.05 * g, rtol=1e-5)
+
+
 def test_invalid_updates_leave_all_history_unchanged(params):
-    saga = PSAGA(5)
+    saga = psaga(5)
     _, state = saga.update(params, saga.init(params), path_idx=1)
     update = jax.jit(saga.update)
     for path_idx in (-1, 5):
@@ -296,7 +314,7 @@ def test_invalid_updates_leave_all_history_unchanged(params):
 
 
 def test_history_sum_overflow_is_rejected():
-    saga = PSAGA(5)
+    saga = psaga(5)
     state = saga.init(jnp.asarray(0.0))._replace(
         seen=jnp.ones(5, dtype=jnp.bool_),
         path_grads=jnp.full(5, 2e38),
@@ -311,11 +329,11 @@ def test_history_sum_overflow_is_rejected():
 @pytest.mark.parametrize("n_paths", [0, -1, 2.5, True])
 def test_invalid_configuration(n_paths):
     with pytest.raises(ValueError, match="positive integer"):
-        PSAGA(n_paths)
+        psaga(n_paths)
 
 
 def test_parameter_and_state_validation(params):
-    saga = PSAGA(5)
+    saga = psaga(5)
     for empty in ({}, jnp.zeros(0)):
         with pytest.raises(ValueError, match="contain"):
             saga.init(empty)
@@ -330,7 +348,7 @@ def test_parameter_and_state_validation(params):
     with pytest.raises(ValueError, match="shapes"):
         saga.update({**params, "bias": jnp.ones(3)}, state, path_idx=0)
     with pytest.raises(ValueError, match="shapes"):
-        replace(saga, n_paths=4).update(params, state, path_idx=0)
+        psaga(4).update(params, state, path_idx=0)
     with pytest.raises(TypeError, match="dtypes"):
         saga.update(
             params,
