@@ -1,10 +1,10 @@
 import math
-from dataclasses import dataclass
 from numbers import Integral
 from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+import optax
 
 
 def _validate_n_paths(n_paths):
@@ -41,76 +41,78 @@ class PAdamState(NamedTuple):
 
     count: jax.Array
     last_steps: jax.Array
-    m: object
-    v: object
+    m: optax.Updates
+    v: optax.Updates
 
 
-@dataclass(frozen=True)
-class PAdam:
-    """Pathwise Adam gradient normalisation with explicit, checkpointable state.
+def padam(
+    n_paths: int,
+    b1: float = 0.9,
+    b2: float = 0.999,
+    eps: float = 1e-8,
+    grad_mult: float = 1.0,
+) -> optax.GradientTransformationExtraArgs:
+    """Pathwise Adam gradient normalisation transformation.
 
     ``update`` returns normalised gradients, not signed parameter updates.
-    Apply plain SGD afterwards: ``params - learning_rate * gradients``.
+    Apply plain SGD afterwards or chain with ``optax.scale_by_learning_rate``.
     The first timestamp is 2, matching the PyTorch forward-then-hook convention.
     Every update processes the entire gradient PyTree using one shared path.
     """
+    _validate_n_paths(n_paths)
+    if not 0 <= b1 < 1 or not 0 <= b2 < 1:
+        raise ValueError("b1 and b2 must be in [0, 1)")
+    if not math.isfinite(eps) or eps <= 0:
+        raise ValueError("eps must be finite and positive")
+    if not math.isfinite(grad_mult) or grad_mult <= 0:
+        raise ValueError("grad_mult must be finite and positive")
 
-    n_paths: int
-    b1: float = 0.9
-    b2: float = 0.999
-    eps: float = 1e-8
-    grad_mult: float = 1.0
-
-    def __post_init__(self):
-        _validate_n_paths(self.n_paths)
-        if not 0 <= self.b1 < 1 or not 0 <= self.b2 < 1:
-            raise ValueError("b1 and b2 must be in [0, 1)")
-        if not math.isfinite(self.eps) or self.eps <= 0:
-            raise ValueError("eps must be finite and positive")
-        if not math.isfinite(self.grad_mult) or self.grad_mult <= 0:
-            raise ValueError("grad_mult must be finite and positive")
-
-    def init(self, params) -> PAdamState:
-        """Allocate two moment arrays of shape (n_paths, *leaf.shape) per leaf."""
-        params = _gradient_arrays(params)
-        moments = jax.tree_util.tree_map(
-            lambda p: jnp.zeros((self.n_paths, *p.shape), dtype=p.dtype), params
-        )
-        return PAdamState(
-            jnp.asarray(0, dtype=jnp.int32),
-            jnp.zeros(self.n_paths, dtype=jnp.int32),
-            moments,
-            jax.tree_util.tree_map(jnp.zeros_like, moments),
-        )
-
-    @staticmethod
     def _decay(beta, time, dtype):
         if beta == 0:
             return jnp.asarray(0, dtype=dtype), jnp.asarray(1, dtype=dtype)
         exponent = jnp.asarray(math.log(beta), dtype=dtype) * time
         return jnp.exp(exponent), -jnp.expm1(exponent)
 
-    def _normalise(self, gradient, m, v, current_step, previous_step):
-        gradient = gradient * self.grad_mult
-        elapsed = (current_step - previous_step).astype(gradient.dtype) / self.n_paths
-        time = current_step.astype(gradient.dtype) / self.n_paths
-        decay1, weight1 = self._decay(self.b1, elapsed, gradient.dtype)
-        decay2, weight2 = self._decay(self.b2, elapsed, gradient.dtype)
-        _, correction1 = self._decay(self.b1, time, gradient.dtype)
-        _, correction2 = self._decay(self.b2, time, gradient.dtype)
-        m = decay1 * m + weight1 * gradient
-        v = decay2 * v + weight2 * jnp.square(gradient)
-        normalised = (m / correction1) / (jnp.sqrt(v / correction2) + self.eps)
+    def _normalise(gradient, m, v, current_step, previous_step):
+        scaled_g = gradient * grad_mult
+        elapsed = (current_step - previous_step).astype(gradient.dtype) / n_paths
+        time = current_step.astype(gradient.dtype) / n_paths
+        decay1, weight1 = _decay(b1, elapsed, gradient.dtype)
+        decay2, weight2 = _decay(b2, elapsed, gradient.dtype)
+        _, correction1 = _decay(b1, time, gradient.dtype)
+        _, correction2 = _decay(b2, time, gradient.dtype)
+        m = decay1 * m + weight1 * scaled_g
+        v = decay2 * v + weight2 * jnp.square(scaled_g)
+        normalised = (m / correction1) / (jnp.sqrt(v / correction2) + eps)
         return normalised, m, v
 
-    def update(self, grads, state: PAdamState, *, path_idx: int | jax.Array):
+    def init_fn(params: optax.Params) -> PAdamState:
+        """Allocate two moment arrays of shape (n_paths, *leaf.shape) per leaf."""
+        params = _gradient_arrays(params)
+        moments = jax.tree_util.tree_map(
+            lambda p: jnp.zeros((n_paths, *p.shape), dtype=p.dtype), params
+        )
+        return PAdamState(
+            jnp.asarray(0, dtype=jnp.int32),
+            jnp.zeros(n_paths, dtype=jnp.int32),
+            moments,
+            jax.tree_util.tree_map(jnp.zeros_like, moments),
+        )
+
+    def update_fn(
+        updates: optax.Updates,
+        state: PAdamState,
+        params: optax.Params | None = None,
+        *,
+        path_idx: int | jax.Array,
+    ) -> tuple[optax.Updates, PAdamState]:
         """Normalise one path's gradients and return a new state.
 
         Invalid scalar array indices, non-finite gradients or numerical failures
         return NaN gradients and unchanged state. Invalid Python indices raise.
         Shapes/dtypes must match init; counters are scalar/vector int32 arrays.
         """
-        grads = _gradient_arrays(grads)
+        grads = _gradient_arrays(updates)
         if not isinstance(state, PAdamState):
             raise TypeError("state must be a PAdamState from init")
         state = jax.tree_util.tree_map(jnp.asarray, state)
@@ -124,21 +126,21 @@ class PAdam:
         grad_leaves = jax.tree_util.tree_leaves(grads)
         m_leaves, v_leaves = map(jax.tree_util.tree_leaves, (state.m, state.v))
         for g, m, v in zip(grad_leaves, m_leaves, v_leaves):
-            if m.shape != (self.n_paths, *g.shape) or v.shape != m.shape:
+            if m.shape != (n_paths, *g.shape) or v.shape != m.shape:
                 raise ValueError("Moment shapes must match n_paths and gradient shapes")
             if m.dtype != g.dtype or v.dtype != g.dtype:
                 raise TypeError("Gradient and moment dtypes must match")
-        if state.count.shape != () or state.last_steps.shape != (self.n_paths,):
+        if state.count.shape != () or state.last_steps.shape != (n_paths,):
             raise ValueError("Invalid PAdam counter shapes")
         if state.count.dtype != jnp.int32 or state.last_steps.dtype != jnp.int32:
             raise TypeError("PAdam counters must use int32")
-        index, valid = _path_index(path_idx, self.n_paths)
+        index, valid = _path_index(path_idx, n_paths)
         current_step = state.count + 2
         previous_step = state.last_steps[index]
         valid &= (state.count >= 0) & (state.count <= jnp.iinfo(jnp.int32).max - 2)
         valid &= (previous_step >= 0) & (previous_step < current_step)
         results = [
-            self._normalise(g, m[index], v[index], current_step, previous_step)
+            _normalise(g, m[index], v[index], current_step, previous_step)
             for g, m, v in zip(grad_leaves, m_leaves, v_leaves)
         ]
         for result, old_v in zip(results, v_leaves):
@@ -170,47 +172,51 @@ class PAdam:
 
         return jax.lax.cond(valid, accept, reject, operand=None)
 
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
+
 
 class PSAGAState(NamedTuple):
     """Visited-path mask and the most recent input gradient for every path."""
 
     seen: jax.Array
-    path_grads: object
+    path_grads: optax.Updates
 
 
-@dataclass(frozen=True)
-class PSAGA:
-    """Pathwise SAGA gradient correction matching this repo's PyTorch hook.
+def psaga(n_paths: int) -> optax.GradientTransformationExtraArgs:
+    """Pathwise SAGA gradient correction transformation.
 
-    Apply after optional gradient scaling and P-Adam, then use plain SGD.
+    Apply after optional gradient scaling and P-Adam, then use plain SGD or
+    chain with ``optax.scale_by_learning_rate``.
     The history stores incoming gradients, before the SAGA correction.
     The average divides by max(1, paths seen including this update minus 1),
     preserving the reference behaviour on both new and repeated path visits.
     """
+    _validate_n_paths(n_paths)
 
-    n_paths: int
-
-    def __post_init__(self):
-        _validate_n_paths(self.n_paths)
-
-    def init(self, params) -> PSAGAState:
+    def init_fn(params: optax.Params) -> PSAGAState:
         """Allocate one gradient array of shape (n_paths, *leaf.shape) per leaf."""
         params = _gradient_arrays(params)
         return PSAGAState(
-            jnp.zeros(self.n_paths, dtype=jnp.bool_),
+            jnp.zeros(n_paths, dtype=jnp.bool_),
             jax.tree_util.tree_map(
-                lambda p: jnp.zeros((self.n_paths, *p.shape), dtype=p.dtype), params
+                lambda p: jnp.zeros((n_paths, *p.shape), dtype=p.dtype), params
             ),
         )
 
-    def update(self, grads, state: PSAGAState, *, path_idx: int | jax.Array):
+    def update_fn(
+        updates: optax.Updates,
+        state: PSAGAState,
+        params: optax.Params | None = None,
+        *,
+        path_idx: int | jax.Array,
+    ) -> tuple[optax.Updates, PSAGAState]:
         """Return corrected gradients and a new history for one shared path.
 
         Invalid scalar array indices, non-finite gradients or numerical failures
         return NaN gradients and unchanged state. Invalid Python indices raise.
         Parameter/gradient trees and history must have matching shapes and dtypes.
         """
-        grads = _gradient_arrays(grads)
+        grads = _gradient_arrays(updates)
         if not isinstance(state, PSAGAState):
             raise TypeError("state must be a PSAGAState from init")
         state = jax.tree_util.tree_map(jnp.asarray, state)
@@ -222,17 +228,17 @@ class PSAGA:
         grad_leaves = jax.tree_util.tree_leaves(grads)
         history_leaves = jax.tree_util.tree_leaves(state.path_grads)
         for gradient, history in zip(grad_leaves, history_leaves):
-            if history.shape != (self.n_paths, *gradient.shape):
+            if history.shape != (n_paths, *gradient.shape):
                 raise ValueError(
                     "History shapes must match n_paths and gradient shapes"
                 )
             if history.dtype != gradient.dtype:
                 raise TypeError("Gradient and history dtypes must match")
-        if state.seen.shape != (self.n_paths,):
+        if state.seen.shape != (n_paths,):
             raise ValueError("PSAGA seen mask must have shape (n_paths,)")
         if state.seen.dtype != jnp.bool_:
             raise TypeError("PSAGA seen mask must use bool")
-        index, valid = _path_index(path_idx, self.n_paths)
+        index, valid = _path_index(path_idx, n_paths)
         seen = state.seen.at[index].set(True)
         denominator = jnp.maximum(1, jnp.sum(seen, dtype=jnp.int32) - 1)
         directions = [
@@ -260,3 +266,5 @@ class PSAGA:
             )
 
         return jax.lax.cond(valid, accept, reject, operand=None)
+
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)

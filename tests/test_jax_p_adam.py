@@ -1,5 +1,4 @@
 import pickle
-from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -8,9 +7,10 @@ torch = pytest.importorskip("torch")
 
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
+optax = pytest.importorskip("optax")
 
 from scrapl import SCRAPLLoss as TorchLoss
-from scrapl.jax import PAdam, SCRAPLLoss
+from scrapl.jax import SCRAPLLoss, padam
 
 
 def assert_tree_close(actual, expected, **kwargs):
@@ -54,7 +54,7 @@ def test_updates_and_state_match_pytorch_hooks(params, grad_mult, betas):
         for p in jax.tree_util.tree_leaves(params)
     ]
     reference.attach_params(torch_params)
-    normaliser = PAdam(reference.n_paths, b1=betas[0], b2=betas[1], grad_mult=grad_mult)
+    normaliser = padam(reference.n_paths, b1=betas[0], b2=betas[1], grad_mult=grad_mult)
     state = normaliser.init(params)
     update = jax.jit(normaliser.update)
     rng = np.random.default_rng(42)
@@ -101,7 +101,10 @@ def test_updates_and_state_match_pytorch_hooks(params, grad_mult, betas):
 
 
 def test_first_step_and_small_fractional_decay_match_pytorch():
-    normaliser = PAdam(100_000, b1=0.999, b2=1 - 1e-10)
+    b1, b2 = 0.999, 1 - 1e-10
+    n_paths = 100_000
+    eps = 1e-8
+    normaliser = padam(n_paths, b1=b1, b2=b2, eps=eps)
     grads = jnp.array([0.0, 1e-6, -2.0], dtype=jnp.float32)
     initial = normaliser.init(grads)
     direction, state = jax.jit(normaliser.update)(
@@ -111,10 +114,10 @@ def test_first_step_and_small_fractional_decay_match_pytorch():
         torch.tensor(np.asarray(grads)),
         torch.zeros(3),
         torch.zeros(3),
-        t=2 / normaliser.n_paths,
+        t=2 / n_paths,
         prev_t=0.0,
-        b1=normaliser.b1,
-        b2=normaliser.b2,
+        b1=b1,
+        b2=b2,
     )
     np.testing.assert_allclose(direction, expected.numpy(), rtol=2e-6, atol=1e-7)
     np.testing.assert_allclose(state.m[17], m.numpy(), rtol=1e-6, atol=1e-14)
@@ -122,12 +125,12 @@ def test_first_step_and_small_fractional_decay_match_pytorch():
     assert np.isfinite(state.v).all()
     assert state.v[17, -1] > 0
     np.testing.assert_allclose(
-        direction, np.asarray(grads) / (np.abs(grads) + normaliser.eps), rtol=2e-6
+        direction, np.asarray(grads) / (np.abs(grads) + eps), rtol=2e-6
     )
 
 
 def test_long_gap_uses_elapsed_steps_and_global_bias_correction():
-    normaliser = PAdam(5)
+    normaliser = padam(5)
     initial = normaliser.init(jnp.array([1.0, 1.0]))
     state = initial._replace(
         count=jnp.asarray(10_000, dtype=jnp.int32),
@@ -150,7 +153,7 @@ def test_long_gap_uses_elapsed_steps_and_global_bias_correction():
 
 
 def test_checkpoint_resume_and_input_immutability(params):
-    normaliser = PAdam(5)
+    normaliser = padam(5)
     initial = normaliser.init(params)
     initial_copy = jax.device_get(initial)
     update = jax.jit(normaliser.update)
@@ -171,7 +174,7 @@ def test_real_loss_training_matches_pytorch_forward_backward_steps():
     theta = jnp.asarray(-1.0)
     torch_theta = torch.nn.Parameter(torch.tensor(-1.0))
     reference.attach_params([torch_theta])
-    normaliser = PAdam(loss.n_paths)
+    normaliser = padam(loss.n_paths)
     state = normaliser.init(theta)
     torch_optimizer = torch.optim.SGD([torch_theta], lr=0.1)
 
@@ -206,7 +209,7 @@ def test_real_loss_training_matches_pytorch_forward_backward_steps():
 def test_jitted_weighted_sampling_scan_reduces_full_path_mean():
     loss = SCRAPLLoss(shape=128, J=3, Q1=2, Q2=1, J_fr=1, Q_fr=1, use_rho_log1p=True)
     target = jax.random.normal(jax.random.key(8), (1, 1, 128))
-    normaliser = PAdam(loss.n_paths)
+    normaliser = padam(loss.n_paths)
     initial_theta = jnp.asarray(-1.0)
     initial = normaliser.init(initial_theta)
     probs = jnp.asarray([0.4, 0.1, 0.2, 0.15, 0.15])
@@ -244,8 +247,26 @@ def test_jitted_weighted_sampling_scan_reduces_full_path_mean():
     assert_tree_close(state, before, rtol=0, atol=0)
 
 
+def test_padam_optax_chain_compatibility(params):
+    transform = padam(n_paths=5, b1=0.9, b2=0.999)
+    opt = optax.chain(
+        transform,
+        optax.scale_by_learning_rate(0.1),
+    )
+    state = opt.init(params)
+    grads = jax.tree_util.tree_map(lambda p: jnp.ones_like(p), params)
+    updates, new_state = opt.update(grads, state, params=params, path_idx=jnp.asarray(0))
+    updated_params = optax.apply_updates(params, updates)
+    for p, up, g in zip(
+        jax.tree_util.tree_leaves(params),
+        jax.tree_util.tree_leaves(updated_params),
+        jax.tree_util.tree_leaves(grads),
+    ):
+        np.testing.assert_allclose(up, p - 0.1 * (g / (jnp.abs(g) + 1e-8)), rtol=1e-5)
+
+
 def test_invalid_updates_leave_state_unchanged(params):
-    normaliser = PAdam(5)
+    normaliser = padam(5)
     initial = normaliser.init(params)
     update = jax.jit(normaliser.update)
     for path_idx in (-1, 5):
@@ -269,7 +290,7 @@ def test_invalid_updates_leave_state_unchanged(params):
 
 
 def test_counter_overflow_and_invalid_moments_are_rejected():
-    normaliser = PAdam(5)
+    normaliser = padam(5)
     params = jnp.ones(2)
     initial = normaliser.init(params)
     update = jax.jit(normaliser.update)
@@ -297,11 +318,11 @@ def test_counter_overflow_and_invalid_moments_are_rejected():
 )
 def test_invalid_configuration(kwargs):
     with pytest.raises(ValueError):
-        PAdam(**{**dict(n_paths=5), **kwargs})
+        padam(**{**dict(n_paths=5), **kwargs})
 
 
 def test_parameter_and_state_shape_validation(params):
-    normaliser = PAdam(5)
+    normaliser = padam(5)
     with pytest.raises(ValueError, match="contain"):
         normaliser.init({})
     with pytest.raises(TypeError, match="float32 or float64"):
@@ -312,4 +333,4 @@ def test_parameter_and_state_shape_validation(params):
     with pytest.raises(ValueError, match="shapes"):
         normaliser.update({**params, "bias": jnp.ones(3)}, state, path_idx=0)
     with pytest.raises(ValueError, match="shapes"):
-        replace(normaliser, n_paths=4).update(params, state, path_idx=0)
+        padam(4).update(params, state, path_idx=0)
