@@ -11,7 +11,6 @@ try:
     tr = require_backend("torch")
     jax = require_backend("jax")
     import equinox as eqx
-    import jax.numpy as jnp
     import optax
     import torch.nn as nn
     from scrapl import SCRAPLLoss as TorchSCRAPLLoss
@@ -62,9 +61,8 @@ class DecoderJAX(eqx.Module):
 
 
 @tr.no_grad()
-def load_jax_to_pytorch(
-    jax_model: eqx.Module, torch_model: nn.Sequential
-) -> None:
+def load_jax_to_pytorch(jax_model: eqx.Module, torch_model: nn.Sequential) -> None:
+    """Copies weights and biases from an Equinox module to a PyTorch sequential model."""
     torch_model[0].weight.copy_(tr.from_dlpack(jax_model.layers[0].weight))
     torch_model[0].bias.copy_(tr.from_dlpack(jax_model.layers[0].bias))
     torch_model[2].weight.copy_(tr.from_dlpack(jax_model.layers[2].weight))
@@ -93,6 +91,7 @@ class OptimExperiment:
     torch_loss: TorchSCRAPLLoss
     jax_loss: JaxSCRAPLLoss
     torch_opt: tr.optim.SGD
+    optimizer: optax.GradientTransformationExtraArgs | optax.GradientTransformation
     evaluate_and_update: Callable[
         ..., tuple[jax.Array, optax.Updates, EncoderJAX, optax.OptState]
     ]
@@ -107,6 +106,7 @@ def setup_toy_models_and_data(
     n_theta: int = 4,
     bs: int = 2,
 ) -> TestSetup:
+    """Initializes synthetic data and matching JAX/PyTorch autoencoder models for testing."""
     key = jax.random.key(seed)
     enc_key, dec_key, x_key, x_target_key, loop_key = jax.random.split(key, 5)
 
@@ -179,14 +179,13 @@ def setup_toy_models_and_data(
 
 
 def build_evaluate_and_update_fn(
-    normalizer: optax.GradientTransformationExtraArgs | optax.GradientTransformation,
-    lr: float,
+    optimizer: optax.GradientTransformationExtraArgs | optax.GradientTransformation,
     jax_loss: JaxSCRAPLLoss,
     decoder_jax: DecoderJAX,
     x_jax: jax.Array,
     x_target_jax: jax.Array,
 ) -> Callable[..., tuple[jax.Array, optax.Updates, EncoderJAX, optax.OptState]]:
-    lr_scaler = optax.scale_by_learning_rate(lr)
+    """Compiles a JIT-filtered step function computing loss, gradients, and model parameter updates."""
 
     @eqx.filter_jit
     def evaluate_and_update(
@@ -200,19 +199,18 @@ def build_evaluate_and_update_fn(
 
         loss_val, grads = eqx.filter_value_and_grad(loss_fn)(enc)
         params = eqx.filter(enc, eqx.is_inexact_array)
-        norm_grads, new_state = normalizer.update(
+        updates, new_state = optimizer.update(
             grads, state, params=params, path_idx=p_idx
         )
-        updates, _ = lr_scaler.update(norm_grads, optax.EmptyState())
         new_enc = eqx.apply_updates(enc, updates)
-        return loss_val, norm_grads, new_enc, new_state
+        return loss_val, updates, new_enc, new_state
 
     return evaluate_and_update
 
 
 def setup_optim_experiment(
     seed: int,
-    normalizer_fn: Callable[
+    optimizer_fn: Callable[
         [int],
         optax.GradientTransformationExtraArgs | optax.GradientTransformation,
     ],
@@ -228,6 +226,7 @@ def setup_optim_experiment(
     n_theta: int = 4,
     bs: int = 2,
 ) -> OptimExperiment:
+    """Sets up corresponding PyTorch and JAX loss functions, models, and optimizer states."""
     config = dict(
         shape=n_samples,
         J=6,
@@ -257,11 +256,10 @@ def setup_optim_experiment(
     torch_loss.attach_params(setup.torch_params)
     torch_opt = tr.optim.SGD(setup.torch_params, lr=lr)
 
-    normalizer = normalizer_fn(jax_loss.n_paths)
-    opt_state = normalizer.init(eqx.filter(setup.encoder_jax, eqx.is_inexact_array))
+    optimizer = optimizer_fn(jax_loss.n_paths)
+    opt_state = optimizer.init(eqx.filter(setup.encoder_jax, eqx.is_inexact_array))
     evaluate_and_update = build_evaluate_and_update_fn(
-        normalizer=normalizer,
-        lr=lr,
+        optimizer=optimizer,
         jax_loss=jax_loss,
         decoder_jax=setup.decoder_jax,
         x_jax=setup.x_jax,
@@ -273,6 +271,7 @@ def setup_optim_experiment(
         torch_loss=torch_loss,
         jax_loss=jax_loss,
         torch_opt=torch_opt,
+        optimizer=optimizer,
         evaluate_and_update=evaluate_and_update,
         opt_state=opt_state,
         lr=lr,
@@ -290,6 +289,7 @@ def run_torch_step(
     x_target_tr: Any,
     path_idx: int,
 ) -> tuple[Any, list[Any]]:
+    """Runs forward/backward passes and SGD optimization step in PyTorch for a given path."""
     torch_opt.zero_grad()
     theta_tr = encoder_torch(x_tr[:, 0, :])
     pred_tr = decoder_torch(theta_tr).unsqueeze(1)
@@ -304,10 +304,11 @@ def run_torch_step(
 def assert_step_matches(
     loss_jax: jax.Array,
     loss_tr: Any,
-    norm_grads: optax.Updates,
+    updates: optax.Updates,
     torch_norm_grads: list[Any],
     encoder_jax: EncoderJAX,
     torch_params: list[Any],
+    lr: float = 0.05,
     loss_rtol: float = 2e-5,
     loss_atol: float = 1e-7,
     grad_rtol: float = 2e-4,
@@ -315,6 +316,7 @@ def assert_step_matches(
     param_rtol: float = 2e-4,
     param_atol: float = 1e-6,
 ) -> None:
+    """Verifies numerical equivalence of loss values, parameter updates, and model weights."""
     # 1. Verify loss values match
     np.testing.assert_allclose(
         np.asarray(loss_jax),
@@ -323,13 +325,11 @@ def assert_step_matches(
         atol=loss_atol,
     )
 
-    # 2. Verify scaled/normalized gradient directions match
-    for jax_g, tr_g in zip(
-        jax.tree.leaves(norm_grads), torch_norm_grads, strict=True
-    ):
+    # 2. Verify parameter updates match (-lr * torch_norm_grads)
+    for jax_u, tr_g in zip(jax.tree.leaves(updates), torch_norm_grads, strict=True):
         np.testing.assert_allclose(
-            np.asarray(jax_g),
-            tr_g.numpy(),
+            np.asarray(jax_u),
+            -lr * tr_g.numpy(),
             rtol=grad_rtol,
             atol=grad_atol,
         )
@@ -348,6 +348,44 @@ def assert_step_matches(
         )
 
 
+def run_optim_step(
+    exp: OptimExperiment,
+    encoder_jax: EncoderJAX,
+    opt_state: optax.OptState,
+    loop_key: jax.Array,
+) -> tuple[EncoderJAX, optax.OptState, jax.Array, int]:
+    """Coordinates a single optimization step and asserts equivalence across JAX and PyTorch."""
+    loop_key, step_key = jax.random.split(loop_key)
+    path_idx = int(exp.jax_loss.sample_path(step_key))
+
+    loss_tr, torch_norm_grads = run_torch_step(
+        exp.setup.encoder_torch,
+        exp.setup.decoder_torch,
+        exp.torch_loss,
+        exp.torch_opt,
+        exp.setup.torch_params,
+        exp.setup.x_tr,
+        exp.setup.x_target_tr,
+        path_idx=path_idx,
+    )
+
+    loss_jax, updates, encoder_jax, opt_state = exp.evaluate_and_update(
+        encoder_jax, opt_state, path_idx
+    )
+
+    assert_step_matches(
+        loss_jax=loss_jax,
+        loss_tr=loss_tr,
+        updates=updates,
+        torch_norm_grads=torch_norm_grads,
+        encoder_jax=encoder_jax,
+        torch_params=exp.setup.torch_params,
+        lr=exp.lr,
+    )
+
+    return encoder_jax, opt_state, loop_key, path_idx
+
+
 @pytest.mark.parametrize("seed", [42])
 @pytest.mark.parametrize("n_iters", [3])
 def test_grad_multiplier(seed: int, n_iters: int) -> None:
@@ -355,47 +393,26 @@ def test_grad_multiplier(seed: int, n_iters: int) -> None:
     lr = 0.05
     exp = setup_optim_experiment(
         seed=seed,
-        normalizer_fn=lambda _: scale_by_gradient_multiplier(grad_mult=grad_mult),
+        optimizer_fn=lambda _: optax.chain(
+            scale_by_gradient_multiplier(grad_mult=grad_mult),
+            optax.scale_by_learning_rate(lr),
+        ),
         use_p_adam=False,
         use_p_saga=False,
         grad_mult=grad_mult,
         lr=lr,
     )
-    setup = exp.setup
-    encoder_jax = setup.encoder_jax
+    encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state
-    loop_key = setup.loop_key
+    loop_key = exp.setup.loop_key
 
     pbar = tqdm(range(n_iters), desc="Testing Gradient Multiplier iterations")
 
     for step in pbar:
-        loop_key, step_key = jax.random.split(loop_key)
-        path_idx = int(exp.jax_loss.sample_path(step_key))
+        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
+            exp, encoder_jax, opt_state, loop_key
+        )
         pbar.set_postfix(step=step, path_idx=path_idx)
-
-        loss_tr, torch_norm_grads = run_torch_step(
-            setup.encoder_torch,
-            setup.decoder_torch,
-            exp.torch_loss,
-            exp.torch_opt,
-            setup.torch_params,
-            setup.x_tr,
-            setup.x_target_tr,
-            path_idx=path_idx,
-        )
-
-        loss_jax, norm_grads, encoder_jax, opt_state = exp.evaluate_and_update(
-            encoder_jax, opt_state, path_idx
-        )
-
-        assert_step_matches(
-            loss_jax,
-            loss_tr,
-            norm_grads,
-            torch_norm_grads,
-            encoder_jax,
-            setup.torch_params,
-        )
 
 
 @pytest.mark.parametrize("seed", [42])
@@ -406,9 +423,10 @@ def test_p_adam(seed: int, n_iters: int) -> None:
 
     exp = setup_optim_experiment(
         seed=seed,
-        normalizer_fn=lambda n_paths: optax.chain(
+        optimizer_fn=lambda n_paths: optax.chain(
             scale_by_gradient_multiplier(grad_mult=grad_mult),
             p_adam(n_paths=n_paths, b1=b1, b2=b2, eps=eps),
+            optax.scale_by_learning_rate(lr),
         ),
         use_p_adam=True,
         use_p_saga=False,
@@ -418,42 +436,18 @@ def test_p_adam(seed: int, n_iters: int) -> None:
         p_adam_eps=eps,
         lr=lr,
     )
-    setup = exp.setup
-    encoder_jax = setup.encoder_jax
+    encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state
-    loop_key = setup.loop_key
+    loop_key = exp.setup.loop_key
 
     pbar = tqdm(range(n_iters), desc="Testing P-Adam iterations")
 
     for step in pbar:
-        loop_key, step_key = jax.random.split(loop_key)
-        path_idx = int(exp.jax_loss.sample_path(step_key))
+        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
+            exp, encoder_jax, opt_state, loop_key
+        )
         pbar.set_postfix(step=step, path_idx=path_idx)
-
-        loss_tr, torch_norm_grads = run_torch_step(
-            setup.encoder_torch,
-            setup.decoder_torch,
-            exp.torch_loss,
-            exp.torch_opt,
-            setup.torch_params,
-            setup.x_tr,
-            setup.x_target_tr,
-            path_idx=path_idx,
-        )
-
-        loss_jax, norm_grads, encoder_jax, opt_state = exp.evaluate_and_update(
-            encoder_jax, opt_state, path_idx
-        )
         padam_state = opt_state[1]
-
-        assert_step_matches(
-            loss_jax,
-            loss_tr,
-            norm_grads,
-            torch_norm_grads,
-            encoder_jax,
-            setup.torch_params,
-        )
 
         # 3. Verify P-Adam moment buffers match
         for i, (m_leaf, v_leaf) in enumerate(
@@ -495,51 +489,28 @@ def test_p_saga(seed: int, n_iters: int) -> None:
 
     exp = setup_optim_experiment(
         seed=seed,
-        normalizer_fn=lambda n_paths: optax.chain(
+        optimizer_fn=lambda n_paths: optax.chain(
             scale_by_gradient_multiplier(grad_mult=grad_mult),
             p_saga(n_paths=n_paths),
+            optax.scale_by_learning_rate(lr),
         ),
         use_p_adam=False,
         use_p_saga=True,
         grad_mult=grad_mult,
         lr=lr,
     )
-    setup = exp.setup
-    encoder_jax = setup.encoder_jax
+    encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state
-    loop_key = setup.loop_key
+    loop_key = exp.setup.loop_key
 
     pbar = tqdm(range(n_iters), desc="Testing P-SAGA iterations")
 
     for step in pbar:
-        loop_key, step_key = jax.random.split(loop_key)
-        path_idx = int(exp.jax_loss.sample_path(step_key))
+        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
+            exp, encoder_jax, opt_state, loop_key
+        )
         pbar.set_postfix(step=step, path_idx=path_idx)
-
-        loss_tr, torch_norm_grads = run_torch_step(
-            setup.encoder_torch,
-            setup.decoder_torch,
-            exp.torch_loss,
-            exp.torch_opt,
-            setup.torch_params,
-            setup.x_tr,
-            setup.x_target_tr,
-            path_idx=path_idx,
-        )
-
-        loss_jax, norm_grads, encoder_jax, opt_state = exp.evaluate_and_update(
-            encoder_jax, opt_state, path_idx
-        )
         psaga_state = opt_state[1]
-
-        assert_step_matches(
-            loss_jax,
-            loss_tr,
-            norm_grads,
-            torch_norm_grads,
-            encoder_jax,
-            setup.torch_params,
-        )
 
         # 3. Verify P-SAGA gradient history buffers match
         for i, g_leaf in enumerate(jax.tree.leaves(psaga_state.prev_path_grads)):
@@ -568,10 +539,11 @@ def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
 
     exp = setup_optim_experiment(
         seed=seed,
-        normalizer_fn=lambda n_paths: optax.chain(
+        optimizer_fn=lambda n_paths: optax.chain(
             scale_by_gradient_multiplier(grad_mult=grad_mult),
             p_adam(n_paths=n_paths, b1=b1, b2=b2, eps=eps),
             p_saga(n_paths=n_paths),
+            optax.scale_by_learning_rate(lr),
         ),
         use_p_adam=True,
         use_p_saga=True,
@@ -581,10 +553,9 @@ def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
         p_adam_eps=eps,
         lr=lr,
     )
-    setup = exp.setup
-    encoder_jax = setup.encoder_jax
+    encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state
-    loop_key = setup.loop_key
+    loop_key = exp.setup.loop_key
 
     pbar = tqdm(
         range(n_iters),
@@ -592,30 +563,7 @@ def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
     )
 
     for step in pbar:
-        loop_key, step_key = jax.random.split(loop_key)
-        path_idx = int(exp.jax_loss.sample_path(step_key))
+        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
+            exp, encoder_jax, opt_state, loop_key
+        )
         pbar.set_postfix(step=step, path_idx=path_idx)
-
-        loss_tr, torch_norm_grads = run_torch_step(
-            setup.encoder_torch,
-            setup.decoder_torch,
-            exp.torch_loss,
-            exp.torch_opt,
-            setup.torch_params,
-            setup.x_tr,
-            setup.x_target_tr,
-            path_idx=path_idx,
-        )
-
-        loss_jax, norm_grads, encoder_jax, opt_state = exp.evaluate_and_update(
-            encoder_jax, opt_state, path_idx
-        )
-
-        assert_step_matches(
-            loss_jax,
-            loss_tr,
-            norm_grads,
-            torch_norm_grads,
-            encoder_jax,
-            setup.torch_params,
-        )
