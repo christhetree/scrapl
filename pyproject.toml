@@ -39,6 +39,7 @@ jax = [
 ]
 test = [
     "pytest>=9.1.1",
+    "tqdm>=4.70.1",
 ]
 
 [project.urls]
@@ -98,4 +99,4 @@ fadtk = { workspace = true, editable = true }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
-addopts = "-v"  # verbose output
+addopts = "-v -s"  # verbose output
