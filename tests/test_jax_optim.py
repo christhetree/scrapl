@@ -19,6 +19,7 @@ try:
         p_adam,
         p_saga,
         scale_by_gradient_multiplier,
+        scrapl_optimizer,
     )
 except ModuleNotFoundError as e:
     pytest.skip(str(e), allow_module_level=True)
@@ -97,6 +98,7 @@ class OptimExperiment:
     ]
     opt_state: optax.OptState
     lr: float
+    weight_decay: float
     grad_mult: float
 
 
@@ -185,7 +187,10 @@ def build_evaluate_and_update_fn(
     x_jax: jax.Array,
     x_target_jax: jax.Array,
 ) -> Callable[..., tuple[jax.Array, optax.Updates, EncoderJAX, optax.OptState]]:
-    """Compiles a JIT-filtered step function computing loss, gradients, and model parameter updates."""
+    """
+    Compiles a JIT-filtered step function computing loss, gradients, and model
+    parameter updates.
+    """
 
     @eqx.filter_jit
     def evaluate_and_update(
@@ -222,11 +227,14 @@ def setup_optim_experiment(
     p_adam_eps: float = 1e-8,
     grad_mult: float = 1e8,
     lr: float = 0.05,
+    weight_decay: float = 0.01,
     n_samples: int = 10000,
     n_theta: int = 4,
     bs: int = 2,
 ) -> OptimExperiment:
-    """Sets up corresponding PyTorch and JAX loss functions, models, and optimizer states."""
+    """
+    Sets up corresponding PyTorch and JAX loss functions, models, and optimizer states.
+    """
     config = dict(
         shape=n_samples,
         J=6,
@@ -254,7 +262,7 @@ def setup_optim_experiment(
     assert jax_loss.n_paths == torch_loss.n_paths
 
     torch_loss.attach_params(setup.torch_params)
-    torch_opt = tr.optim.SGD(setup.torch_params, lr=lr)
+    torch_opt = tr.optim.SGD(setup.torch_params, lr=lr, weight_decay=weight_decay)
 
     optimizer = optimizer_fn(jax_loss.n_paths)
     opt_state = optimizer.init(eqx.filter(setup.encoder_jax, eqx.is_inexact_array))
@@ -275,6 +283,7 @@ def setup_optim_experiment(
         evaluate_and_update=evaluate_and_update,
         opt_state=opt_state,
         lr=lr,
+        weight_decay=weight_decay,
         grad_mult=grad_mult,
     )
 
@@ -288,8 +297,10 @@ def run_torch_step(
     x_tr: Any,
     x_target_tr: Any,
     path_idx: int,
-) -> tuple[Any, list[Any]]:
-    """Runs forward/backward passes and SGD optimization step in PyTorch for a given path."""
+) -> tuple[Any, list[Any], list[Any]]:
+    """
+    Runs forward/backward passes and SGD optimization step in PyTorch for a given path.
+    """
     torch_opt.zero_grad()
     theta_tr = encoder_torch(x_tr[:, 0, :])
     pred_tr = decoder_torch(theta_tr).unsqueeze(1)
@@ -297,8 +308,9 @@ def run_torch_step(
     loss_tr.backward()
 
     torch_norm_grads = [p.grad.clone() for p in torch_params]
+    torch_params_before_step = [p.clone() for p in torch_params]
     torch_opt.step()
-    return loss_tr, torch_norm_grads
+    return loss_tr, torch_norm_grads, torch_params_before_step
 
 
 def assert_step_matches(
@@ -306,9 +318,11 @@ def assert_step_matches(
     loss_tr: Any,
     updates: optax.Updates,
     torch_norm_grads: list[Any],
+    torch_params_before_step: list[Any],
     encoder_jax: EncoderJAX,
     torch_params: list[Any],
     lr: float = 0.05,
+    weight_decay: float = 0.01,
     loss_rtol: float = 2e-5,
     loss_atol: float = 1e-7,
     grad_rtol: float = 2e-4,
@@ -316,7 +330,9 @@ def assert_step_matches(
     param_rtol: float = 2e-4,
     param_atol: float = 1e-6,
 ) -> None:
-    """Verifies numerical equivalence of loss values, parameter updates, and model weights."""
+    """
+    Verifies numerical equivalence of loss values, parameter updates, and model weights.
+    """
     # 1. Verify loss values match
     np.testing.assert_allclose(
         np.asarray(loss_jax),
@@ -325,11 +341,19 @@ def assert_step_matches(
         atol=loss_atol,
     )
 
-    # 2. Verify parameter updates match (-lr * torch_norm_grads)
-    for jax_u, tr_g in zip(jax.tree.leaves(updates), torch_norm_grads, strict=True):
+    # 2. Verify parameter updates match (-lr * (torch_norm_grads + weight_decay * params))
+    for jax_u, tr_g, tr_p_before in zip(
+        jax.tree.leaves(updates),
+        torch_norm_grads,
+        torch_params_before_step,
+        strict=True,
+    ):
+        expected_update = -lr * (
+            tr_g.numpy() + weight_decay * tr_p_before.detach().numpy()
+        )
         np.testing.assert_allclose(
             np.asarray(jax_u),
-            -lr * tr_g.numpy(),
+            expected_update,
             rtol=grad_rtol,
             atol=grad_atol,
         )
@@ -354,11 +378,14 @@ def run_optim_step(
     opt_state: optax.OptState,
     loop_key: jax.Array,
 ) -> tuple[EncoderJAX, optax.OptState, jax.Array, int]:
-    """Coordinates a single optimization step and asserts equivalence across JAX and PyTorch."""
+    """
+    Coordinates a single optimization step and asserts equivalence across JAX and
+    PyTorch.
+    """
     loop_key, step_key = jax.random.split(loop_key)
     path_idx = int(exp.jax_loss.sample_path(step_key))
 
-    loss_tr, torch_norm_grads = run_torch_step(
+    loss_tr, torch_norm_grads, torch_params_before = run_torch_step(
         exp.setup.encoder_torch,
         exp.setup.decoder_torch,
         exp.torch_loss,
@@ -378,9 +405,11 @@ def run_optim_step(
         loss_tr=loss_tr,
         updates=updates,
         torch_norm_grads=torch_norm_grads,
+        torch_params_before_step=torch_params_before,
         encoder_jax=encoder_jax,
         torch_params=exp.setup.torch_params,
         lr=exp.lr,
+        weight_decay=exp.weight_decay,
     )
 
     return encoder_jax, opt_state, loop_key, path_idx
@@ -391,15 +420,21 @@ def run_optim_step(
 def test_grad_multiplier(seed: int, n_iters: int) -> None:
     grad_mult = 1e8
     lr = 0.05
+    weight_decay = 0.01
     exp = setup_optim_experiment(
         seed=seed,
-        optimizer_fn=lambda _: optax.chain(
-            scale_by_gradient_multiplier(grad_mult=grad_mult),
-            optax.scale_by_learning_rate(lr),
+        optimizer_fn=lambda n_paths: scrapl_optimizer(
+            learning_rate=lr,
+            weight_decay=weight_decay,
+            n_paths=n_paths,
+            grad_mult=grad_mult,
+            use_p_adam=False,
+            use_p_saga=False,
         ),
         use_p_adam=False,
         use_p_saga=False,
         grad_mult=grad_mult,
+        weight_decay=weight_decay,
         lr=lr,
     )
     encoder_jax = exp.setup.encoder_jax
@@ -419,18 +454,25 @@ def test_grad_multiplier(seed: int, n_iters: int) -> None:
 @pytest.mark.parametrize("n_iters", [10])
 def test_p_adam(seed: int, n_iters: int) -> None:
     grad_mult = 1e8
-    b1, b2, eps, lr = 0.9, 0.999, 1e-8, 0.05
+    b1, b2, eps, lr, weight_decay = 0.9, 0.999, 1e-8, 0.05, 0.01
 
     exp = setup_optim_experiment(
         seed=seed,
-        optimizer_fn=lambda n_paths: optax.chain(
-            scale_by_gradient_multiplier(grad_mult=grad_mult),
-            p_adam(n_paths=n_paths, b1=b1, b2=b2, eps=eps),
-            optax.scale_by_learning_rate(lr),
+        optimizer_fn=lambda n_paths: scrapl_optimizer(
+            learning_rate=lr,
+            weight_decay=weight_decay,
+            n_paths=n_paths,
+            grad_mult=grad_mult,
+            use_p_adam=True,
+            use_p_saga=False,
+            p_adam_b1=b1,
+            p_adam_b2=b2,
+            p_adam_eps=eps,
         ),
         use_p_adam=True,
         use_p_saga=False,
         grad_mult=grad_mult,
+        weight_decay=weight_decay,
         p_adam_b1=b1,
         p_adam_b2=b2,
         p_adam_eps=eps,
@@ -486,17 +528,22 @@ def test_p_adam(seed: int, n_iters: int) -> None:
 def test_p_saga(seed: int, n_iters: int) -> None:
     grad_mult = 1e8
     lr = 0.05
+    weight_decay = 0.01
 
     exp = setup_optim_experiment(
         seed=seed,
-        optimizer_fn=lambda n_paths: optax.chain(
-            scale_by_gradient_multiplier(grad_mult=grad_mult),
-            p_saga(n_paths=n_paths),
-            optax.scale_by_learning_rate(lr),
+        optimizer_fn=lambda n_paths: scrapl_optimizer(
+            learning_rate=lr,
+            weight_decay=weight_decay,
+            n_paths=n_paths,
+            grad_mult=grad_mult,
+            use_p_adam=False,
+            use_p_saga=True,
         ),
         use_p_adam=False,
         use_p_saga=True,
         grad_mult=grad_mult,
+        weight_decay=weight_decay,
         lr=lr,
     )
     encoder_jax = exp.setup.encoder_jax
@@ -535,15 +582,20 @@ def test_p_saga(seed: int, n_iters: int) -> None:
 @pytest.mark.parametrize("n_iters", [10])
 def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
     grad_mult = 1e8
-    b1, b2, eps, lr = 0.9, 0.999, 1e-8, 0.05
+    b1, b2, eps, lr, weight_decay = 0.9, 0.999, 1e-8, 0.05, 0.01
 
     exp = setup_optim_experiment(
         seed=seed,
-        optimizer_fn=lambda n_paths: optax.chain(
-            scale_by_gradient_multiplier(grad_mult=grad_mult),
-            p_adam(n_paths=n_paths, b1=b1, b2=b2, eps=eps),
-            p_saga(n_paths=n_paths),
-            optax.scale_by_learning_rate(lr),
+        optimizer_fn=lambda n_paths: scrapl_optimizer(
+            learning_rate=lr,
+            weight_decay=weight_decay,
+            n_paths=n_paths,
+            grad_mult=grad_mult,
+            use_p_adam=True,
+            use_p_saga=True,
+            p_adam_b1=b1,
+            p_adam_b2=b2,
+            p_adam_eps=eps,
         ),
         use_p_adam=True,
         use_p_saga=True,
@@ -552,6 +604,7 @@ def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
         p_adam_b2=b2,
         p_adam_eps=eps,
         lr=lr,
+        weight_decay=weight_decay,
     )
     encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state

@@ -18,8 +18,9 @@ def scale_by_gradient_multiplier(
 ) -> optax.GradientTransformationExtraArgs:
     """Scales gradients by a constant multiplier factor.
 
-    Applied to gradients before variance normalization or optimizer updates to prevent
-    underflow and numerical precision issues when squaring gradient values in JTFS.
+    A scalar multiplier applied to gradients to prevent JTFS precision errors
+    when squaring gradient values in commonly used optimizers like Adam. See
+    https://hal.science/hal-05124224v1 for more information.
 
     Args:
         grad_mult (float, optional): Gradient multiplier factor.
@@ -68,8 +69,8 @@ def adam_grad_norm_cont(
         prev_v (jax.Array): Previous second moment estimate for the path.
         t (jax.Array | float): Normalized current time-step (curr_t / n_paths).
         prev_t (jax.Array | float): Normalized previous time-step (prev_t / n_paths).
-        b1 (float, optional): Beta 1 decay factor. Defaults to 0.9.
-        b2 (float, optional): Beta 2 decay factor. Defaults to 0.999.
+        b1 (float, optional): β1 Adam hyperparameter. Defaults to 0.9.
+        b2 (float, optional): β2 Adam hyperparameter. Defaults to 0.999.
         eps (float, optional): Small epsilon for numerical stability. Defaults to 1e-8.
 
     Returns:
@@ -102,16 +103,16 @@ def p_adam(
     b2: float = 0.999,
     eps: float = 1e-8,
 ) -> optax.GradientTransformationExtraArgs:
-    """Pathwise Adam (P-Adam) gradient normalization transformation.
+    """Pathwise Adam (𝒫-Adam) gradient normalization transformation.
 
     Computes running first and second moments of gradients per scattering path
     to normalize gradients across stochastic path choices.
 
     Args:
         n_paths (int): Total number of scattering paths.
-        b1 (float, optional): Beta 1 decay hyperparameter in [0, 1).
+        b1 (float, optional): β1 Adam hyperparameter in [0, 1).
             Defaults to 0.9.
-        b2 (float, optional): Beta 2 decay hyperparameter in [0, 1).
+        b2 (float, optional): β2 Adam hyperparameter in [0, 1).
             Defaults to 0.999.
         eps (float, optional): Small epsilon for numerical stability.
             Defaults to 1e-8.
@@ -159,11 +160,11 @@ def p_adam(
         *,
         path_idx: int,
     ) -> tuple[optax.Updates, PAdamState]:
-        """Normalizes path gradients and returns updated P-Adam state.
+        """Normalizes path gradients and returns updated 𝒫-Adam state.
 
         Args:
             updates (optax.Updates): Incoming gradients PyTree.
-            state (PAdamState): Current P-Adam optimizer state.
+            state (PAdamState): Current 𝒫-Adam optimizer state.
             params (optax.Params | None, optional): Model parameters.
                 Defaults to None.
             path_idx (int): Path index used for the current step.
@@ -234,7 +235,7 @@ class PSAGAState(NamedTuple):
 
 
 def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
-    """Pathwise SAGA (P-SAGA) gradient correction transformation.
+    """Pathwise SAGA (𝒫-SAGA) gradient correction transformation.
 
     Maintains historical gradients across visited paths and computes variance-reduced
     gradient corrections.
@@ -278,7 +279,7 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
 
         Args:
             updates (optax.Updates): Incoming gradients PyTree.
-            state (PSAGAState): Current P-SAGA optimizer state.
+            state (PSAGAState): Current 𝒫-SAGA optimizer state.
             params (optax.Params | None, optional): Model parameters.
                 Defaults to None.
             path_idx (int): Path index used for the current step.
@@ -323,3 +324,92 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
         return saga_grads, new_state
 
     return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
+
+
+def scrapl_optimizer(
+    learning_rate: float = 1e-3,
+    weight_decay: float = 0.01,
+    *,
+    n_paths: int,
+    grad_mult: float = 1e8,
+    use_p_adam: bool = True,
+    use_p_saga: bool = True,
+    p_adam_b1: float = 0.9,
+    p_adam_b2: float = 0.999,
+    p_adam_eps: float = 1e-8,
+) -> optax.GradientTransformationExtraArgs:
+    """Convenience factory creating a chained Optax optimizer for SCRAPL.
+
+    Chains gradient multiplier scaling, Pathwise Adam (𝒫-Adam) normalization,
+    Pathwise SAGA (𝒫-SAGA) variance reduction, optional weight decay, and learning
+    rate scaling into a single Optax transformation pipeline supporting `path_idx`.
+
+    For documentation, examples, hyperparameters, and best practices, please visit:
+    https://github.com/christhetree/scrapl
+    See https://hal.science/hal-05124224v1 for more information on the SCRAPL algorithm.
+
+    Args:
+        learning_rate (float, optional): Base learning rate for parameter updates.
+            Defaults to 1e-3.
+        weight_decay (float, optional): L2 weight decay factor added to updates
+            before learning rate scaling. Defaults to 0.01.
+        n_paths (int): Total number of scattering paths.
+        grad_mult (float, optional): A scalar multiplier applied to gradients to
+            prevent JTFS precision errors when squaring gradient values in commonly
+            used optimizers like Adam. See https://hal.science/hal-05124224v1 for
+            more information. If 1.0, gradient multiplier scaling is omitted.
+            Defaults to 1e8.
+        use_p_adam (bool, optional): If True, enables the 𝒫-Adam algorithm.
+            Defaults to True.
+        use_p_saga (bool, optional): If True, enables the 𝒫-SAGA algorithm.
+            Defaults to True.
+        p_adam_b1 (float, optional): β1 Adam hyperparameter for the internal 𝒫-Adam
+            algorithm in [0, 1). Defaults to 0.9.
+        p_adam_b2 (float, optional): β2 Adam hyperparameter for the internal 𝒫-Adam
+            algorithm in [0, 1). Defaults to 0.999.
+        p_adam_eps (float, optional): ε Adam hyperparameter for the internal 𝒫-Adam
+            algorithm. Defaults to 1e-8.
+
+    Returns:
+        optax.GradientTransformationExtraArgs: Chained Optax optimizer accepting
+        `path_idx` in its `update` function.
+
+    Raises:
+        AssertionError: If `n_paths` is not a positive integer.
+        AssertionError: If `grad_mult` is not finite and positive.
+        AssertionError: If `p_adam_b1` or `p_adam_b2` is not in [0, 1).
+        AssertionError: If `p_adam_eps` is not finite and positive.
+        AssertionError: If `weight_decay` is negative.
+    """
+    assert 0 < n_paths, "n_paths must be a positive integer"
+    assert (
+        math.isfinite(grad_mult) and grad_mult > 0
+    ), "grad_mult must be finite and positive"
+    assert (
+        0 <= p_adam_b1 < 1 and 0 <= p_adam_b2 < 1
+    ), "p_adam_b1 and p_adam_b2 must be in [0, 1)"
+    assert (
+        math.isfinite(p_adam_eps) and p_adam_eps > 0
+    ), "p_adam_eps must be finite and positive"
+    assert weight_decay >= 0.0, "weight_decay must be non-negative"
+
+    transforms: list[
+        optax.GradientTransformationExtraArgs | optax.GradientTransformation
+    ] = []
+    if grad_mult != 1.0:
+        transforms.append(scale_by_gradient_multiplier(grad_mult=grad_mult))
+    if use_p_adam:
+        transforms.append(
+            p_adam(
+                n_paths=n_paths,
+                b1=p_adam_b1,
+                b2=p_adam_b2,
+                eps=p_adam_eps,
+            )
+        )
+    if use_p_saga:
+        transforms.append(p_saga(n_paths=n_paths))
+    if weight_decay > 0.0:
+        transforms.append(optax.add_decayed_weights(weight_decay=weight_decay))
+    transforms.append(optax.scale_by_learning_rate(learning_rate))
+    return optax.chain(*transforms)
