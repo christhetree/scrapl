@@ -175,7 +175,9 @@ def p_adam(
         """
         assert 0 <= path_idx < n_paths, f"path_idx must be in [0, {n_paths})"
         path_idx = jnp.asarray(path_idx, dtype=jnp.int32)
-        curr_t = state.scrapl_t + 1
+        # TODO(cm): Look into this
+        new_scrapl_t = state.scrapl_t + 1  # Incremented in forward() in Torch
+        curr_t = new_scrapl_t + 1
         prev_t = state.prev_t_s[path_idx]
         t_norm = curr_t.astype(jnp.float32) / n_paths
         prev_t_norm = prev_t.astype(jnp.float32) / n_paths
@@ -195,18 +197,30 @@ def p_adam(
                 b2=b2,
                 eps=eps,
             )
-            prev_m_s = prev_m_s.at[path_idx].set(m)
-            prev_v_s = prev_v_s.at[path_idx].set(v)
-            return grad_hat, prev_m_s, prev_v_s
+            return grad_hat, prev_m_s.at[path_idx].set(m), prev_v_s.at[path_idx].set(v)
 
-        results = jax.tree.map(_update_leaf, updates, state.prev_m_s, state.prev_v_s)
-        normalized_grads = jax.tree.map(lambda r: r[0], results)
-        new_prev_m_s = jax.tree.map(lambda r: r[1], results)
-        new_prev_v_s = jax.tree.map(lambda r: r[2], results)
+        # Map _update_leaf over parameter leaves to obtain a PyTree where each leaf
+        # is a 3-tuple (grad_hat, new_prev_m_s_leaf, new_prev_v_s_leaf).
+        results = jax.tree.map(
+            _update_leaf,
+            updates,
+            state.prev_m_s,
+            state.prev_v_s,
+        )
+
+        # Transpose Tree[Tuple[grad, m_s, v_s]] -> Tuple[Tree[grad], Tree[m_s], Tree[v_s]]
+        # outer_def defines the container structure of the model updates, and inner_def
+        # defines the 3-element tuple structure at each leaf.
+        outer_def = jax.tree.structure(updates)
+        inner_def = jax.tree.structure((0, 0, 0))
+        normalized_grads, new_prev_m_s, new_prev_v_s = jax.tree.transpose(
+            outer_def, inner_def, results
+        )
+
         new_prev_t_s = state.prev_t_s.at[path_idx].set(curr_t)
 
         new_state = PAdamState(
-            scrapl_t=curr_t,
+            scrapl_t=new_scrapl_t,
             prev_t_s=new_prev_t_s,
             prev_m_s=new_prev_m_s,
             prev_v_s=new_prev_v_s,
@@ -294,9 +308,22 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
             prev_path_grads = prev_path_grads.at[path_idx].set(grad)
             return saga_grad, prev_path_grads
 
-        results = jax.tree.map(_update_leaf, updates, state.prev_path_grads)
-        saga_grads = jax.tree.map(lambda r: r[0], results)
-        new_prev_path_grads = jax.tree.map(lambda r: r[1], results)
+        # Map _update_leaf over parameter leaves to obtain a PyTree where each leaf
+        # is a 2-tuple (saga_grad, new_prev_path_grads_leaf).
+        results = jax.tree.map(
+            _update_leaf,
+            updates,
+            state.prev_path_grads,
+        )
+
+        # Transpose Tree[Tuple[saga_grad, prev_path_grads]] -> Tuple[Tree[saga_grad],
+        # Tree[prev_path_grads]] outer_def defines the container structure of the model
+        # updates, and inner_def defines the 2-element tuple structure at each leaf.
+        outer_def = jax.tree.structure(updates)
+        inner_def = jax.tree.structure((0, 0))
+        saga_grads, new_prev_path_grads = jax.tree.transpose(
+            outer_def, inner_def, results
+        )
 
         new_state = PSAGAState(
             path_counts=path_counts, prev_path_grads=new_prev_path_grads
