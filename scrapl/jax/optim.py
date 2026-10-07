@@ -1,7 +1,7 @@
 import logging
 import math
 import os
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import equinox as eqx
 import jax
@@ -15,7 +15,7 @@ log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 def scale_by_gradient_multiplier(
     grad_mult: float = 1.0,
-) -> optax.GradientTransformation:
+) -> optax.GradientTransformationExtraArgs:
     """Scales gradients by a constant multiplier factor.
 
     Applied to gradients before variance normalization or optimizer updates to prevent
@@ -26,7 +26,7 @@ def scale_by_gradient_multiplier(
             Defaults to 1.0.
 
     Returns:
-        optax.GradientTransformation: An Optax gradient transformation.
+        optax.GradientTransformationExtraArgs: An Optax gradient transformation.
 
     Raises:
         AssertionError: If `grad_mult` is not finite and positive.
@@ -42,11 +42,12 @@ def scale_by_gradient_multiplier(
         updates: optax.Updates,
         state: optax.EmptyState,
         params: optax.Params | None = None,
+        **extra_args: Any,
     ) -> tuple[optax.Updates, optax.EmptyState]:
         scaled_grads = jax.tree.map(lambda g: g * grad_mult, updates)
         return scaled_grads, state
 
-    return optax.GradientTransformation(init=init_fn, update=update_fn)
+    return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
 
 
 def adam_grad_norm_cont(
@@ -201,12 +202,7 @@ def p_adam(
 
         # Map _update_leaf over parameter leaves to obtain a PyTree where each leaf
         # is a 3-tuple (grad_hat, new_prev_m_s_leaf, new_prev_v_s_leaf).
-        results = jax.tree.map(
-            _update_leaf,
-            updates,
-            state.prev_m_s,
-            state.prev_v_s,
-        )
+        results = jax.tree.map(_update_leaf, updates, state.prev_m_s, state.prev_v_s)
 
         # Transpose Tree[Tuple[grad, m_s, v_s]] -> Tuple[Tree[grad], Tree[m_s], Tree[v_s]]
         # outer_def defines the container structure of the model updates, and inner_def
@@ -310,11 +306,7 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
 
         # Map _update_leaf over parameter leaves to obtain a PyTree where each leaf
         # is a 2-tuple (saga_grad, new_prev_path_grads_leaf).
-        results = jax.tree.map(
-            _update_leaf,
-            updates,
-            state.prev_path_grads,
-        )
+        results = jax.tree.map(_update_leaf, updates, state.prev_path_grads)
 
         # Transpose Tree[Tuple[saga_grad, prev_path_grads]] -> Tuple[Tree[saga_grad],
         # Tree[prev_path_grads]] outer_def defines the container structure of the model
