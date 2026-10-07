@@ -8,7 +8,7 @@ averages its distances over batch and channels. Inputs must have matching shapes
 
 This stage includes θ-IS warmup, uniform and importance sampling, fixed-path
 evaluation, optional `log1p` compression, JAX differentiation, P-Adam gradient
-normalisation and P-SAGA gradient correction. The loss itself returns ordinary
+normalization and P-SAGA gradient correction. The loss itself returns ordinary
 gradients; P-Adam and P-SAGA are optional, explicit Optax transformations applied after
 differentiation.
 
@@ -87,13 +87,13 @@ print(f"Loss for specific path: {float(loss):.6f}")
 
 ### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
 
-In JAX, $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are implemented as native [Optax](https://github.com/google-deepmind/optax) gradient transformations (`padam` and `psaga`). They do not require backward hooks or attaching parameters; instead, chain them directly into your Optax optimizer:
+In JAX, $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA are implemented as native [Optax](https://github.com/google-deepmind/optax) gradient transformations (`p_adam` and `p_saga`). They do not require backward hooks or attaching parameters; instead, chain them directly into your Optax optimizer:
 
 ```python
 import equinox as eqx
 import jax
 import optax
-from scrapl.jax import SCRAPLLoss, padam, psaga
+from scrapl.jax import SCRAPLLoss, p_adam, p_saga, scale_by_gradient_multiplier
 
 # Example loss and toy MLP model
 scrapl_loss = SCRAPLLoss(shape=1024, J=3, Q1=1, Q2=1, J_fr=2, Q_fr=1)
@@ -112,12 +112,13 @@ model = eqx.nn.MLP(
 
 # Chain P-Adam, P-SAGA, weight decay, and learning rate scaling
 optimiser = optax.chain(
-    padam(scrapl_loss.n_paths, b1=0.9, b2=0.999, eps=1e-8, grad_mult=1.0),
-    psaga(scrapl_loss.n_paths),
+    scale_by_gradient_multiplier(1.0),
+    p_adam(scrapl_loss.n_paths, b1=0.9, b2=0.999, eps=1e-8),
+    p_saga(scrapl_loss.n_paths),
     optax.add_decayed_weights(0.01),
     optax.scale_by_learning_rate(1e-4),
 )
-opt_state = optimiser.init(eqx.filter(model, eqx.is_array))
+opt_state = optimiser.init(eqx.filter(model, eqx.is_inexact_array))
 
 # Create input signals
 x = jax.random.normal(key_data, (4, 1, 1024))
@@ -134,7 +135,7 @@ def train_step(model, opt_state, x, x_target, key):
 
     loss_val, grads = eqx.filter_value_and_grad(loss_fn)(model)
     updates, opt_state = optimiser.update(
-        grads, opt_state, params=eqx.filter(model, eqx.is_array), path_idx=path_idx
+        grads, opt_state, params=eqx.filter(model, eqx.is_inexact_array), path_idx=path_idx
     )
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss_val
@@ -194,7 +195,7 @@ def synth_fn(theta):
 
 # Warmup data: (n_batches, batch_size, channels, samples)
 xs = jax.random.normal(jax.random.key(3), (n_batches, bs, n_ch, n_samples))
-params = eqx.filter(encoder, eqx.is_array)
+params = eqx.filter(encoder, eqx.is_inexact_array)
 
 loss_fn = SCRAPLLoss(shape=n_samples, J=3, Q1=1, Q2=1, J_fr=2, Q_fr=1)
 print(f"Uniform path sampling probability: {float(loss_fn.unif_prob):.6f}")
@@ -338,7 +339,7 @@ def step(params, batch, key, probs):
         return loss_fn(batch, prediction, key=path_key, probs=probs)
 
     value, gradient = jax.value_and_grad(objective)(params)
-    params = jax.tree_util.tree_map(lambda p, g: p - 1e-5 * g, params, gradient)
+    params = jax.tree.map(lambda p, g: p - 1e-5 * g, params, gradient)
     return params, key, value
 
 params, key, value = step(params, xs[0], jax.random.key(4), warmup.probs)
@@ -394,20 +395,20 @@ settled. Increasing `n_iter` can help, but does not guarantee convergence for
 every non-symmetric operator. Iteration counts and initial vectors differ from
 PyTorch, so finite-iteration estimates are not expected to be bit-identical.
 
-## P-Adam gradient normalisation
+## P-Adam gradient normalization
 
-`padam` creates an Optax transformation keeping separate first and second moments for each path and parameter leaf.
-Its output is a normalised gradient direction: chain with `optax.scale_by_learning_rate` and apply with `optax.apply_updates`. Do not feed
-the normalised gradients through another Adam optimiser.
+`p_adam` creates an Optax transformation keeping separate first and second moments for each path and parameter leaf.
+Its output is a normalized gradient direction: chain with `optax.scale_by_learning_rate` and apply with `optax.apply_updates`. Do not feed
+the normalized gradients through another Adam optimiser.
 
 Continuing from the warmup example above:
 
 ```python
 import optax
-from scrapl.jax import padam
+from scrapl.jax import p_adam
 
 optimiser = optax.chain(
-    padam(loss_fn.n_paths, b1=0.9, b2=0.999, eps=1e-8, grad_mult=1.0),
+    p_adam(loss_fn.n_paths, b1=0.9, b2=0.999, eps=1e-8),
     optax.scale_by_learning_rate(1e-3),
 )
 opt_state = optimiser.init(params)
@@ -435,34 +436,27 @@ Sample the path once and pass that same index to both the loss and the Optax upd
 example accepts θ-IS probabilities; passing `None` as `probs` uses uniform
 sampling. No hooks or parameter attachment are needed.
 
-With `s = state.count + 2`, `r = state.last_steps[path_idx]` and `N = n_paths`,
-P-Adam uses `t = s / N` and `delta = (s - r) / N`. For each selected moment row:
+With `curr_t = state.scrapl_t + 1`, `prev_t = state.prev_t_s[path_idx]` and `N = n_paths`,
+P-Adam uses `t = curr_t / N` and `delta_t = t - prev_t_norm`. For each selected moment row:
 
 ```text
-g = grad_mult * gradient
-m = b1**delta * m + (1 - b1**delta) * g
-v = b2**delta * v + (1 - b2**delta) * g**2
-direction = (m / (1 - b1**t)) / (sqrt(v / (1 - b2**t)) + eps)
+m = b1**delta_t * prev_m + (1 - b1**delta_t) * grad
+v = b2**delta_t * prev_v + (1 - b2**delta_t) * grad**2
+m_hat = m / (1 - b1**t)
+v_hat = v / (1 - b2**t)
+grad_hat = m_hat / (sqrt(v_hat) + eps)
 ```
 
-The first update uses timestamp **2**, matching this repo's PyTorch behaviour:
-its forward pass increments the loss counter, then the gradient hook adds one.
-The JAX counter counts completed P-Adam updates. Numerical parity assumes one
-forward/backward training pass per update. Evaluating the loss, running warmup or
-computing gradients alone does not advance JAX optimiser state.
+The first update uses timestamp **1** (matching `curr_t = 1`), and counts completed P-Adam updates. Numerical parity assumes one forward/backward training pass per update. Evaluating the loss, running warmup or computing gradients alone does not advance JAX optimizer state.
 
 Elapsed time is measured in global steps, including steps spent on other paths.
 Only the selected path's moments and timestamp are updated. Every gradient leaf
 is processed on every update; use zero arrays for unused leaves. This does not
 model PyTorch hooks being skipped for parameters whose gradient is `None`.
 
-The defaults are `b1=0.9`, `b2=0.999`, `eps=1e-8`, and **`grad_mult=1.0`**.
-Set `grad_mult` explicitly to match an existing PyTorch run, whose loss defaults
-to `1e8`. Scaling acts before the moment updates and changes the effective role
-of epsilon, so it can matter for tiny raw scattering gradients. Decay complements
-and bias corrections use `expm1` to retain precision for small fractional times.
+The defaults are `b1=0.9`, `b2=0.999`, and `eps=1e-8`. To apply gradient scaling, use `scale_by_gradient_multiplier(grad_mult)`.
 
-`PAdamState` is a NamedTuple containing `count`, `last_steps`, `m` and `v`. Save it
+`PAdamState` is a NamedTuple containing `scrapl_t`, `prev_t_s`, `prev_m_s` and `prev_v_s`. Save it
 alongside parameters, PRNG keys, sampling probabilities and the P-Adam/loss
 configuration. Restored NumPy array leaves are accepted as well. Use `init(params)`
 only when starting or deliberately resetting the moment history.
@@ -470,14 +464,11 @@ only when starting or deliberately resetting the moment history.
 Moment memory contains **two copies of the entire parameter tree per path**, plus
 integer counters. This can be substantial for large models and filter banks.
 Parameter and moment leaves must use matching float32 or float64 dtypes and shapes.
-Invalid Python path indices raise; invalid scalar array indices, non-finite
-gradients, numerical failures or counter exhaustion return NaN directions and
-unchanged state. Treat NaN directions as a failed step before updating parameters.
 
 ## P-SAGA gradient correction
 
-`psaga` creates an Optax transformation keeping the most recent incoming gradient for each path and parameter leaf.
-Use it on its own after differentiation, or chain it after `padam` to match the combined
+`p_saga` creates an Optax transformation keeping the most recent incoming gradient for each path and parameter leaf.
+Use it on its own after differentiation, or chain it after `p_adam` to match the combined
 PyTorch hook.
 
 Continuing with the encoder, synthesiser and warmup probabilities above, this
@@ -485,11 +476,11 @@ example starts fresh optimiser histories and enables both transformations via `o
 
 ```python
 import optax
-from scrapl.jax import padam, psaga
+from scrapl.jax import p_adam, p_saga
 
 optimiser = optax.chain(
-    padam(loss_fn.n_paths, grad_mult=1.0),
-    psaga(loss_fn.n_paths),
+    p_adam(loss_fn.n_paths),
+    p_saga(loss_fn.n_paths),
     optax.scale_by_learning_rate(1e-3),
 )
 opt_state = optimiser.init(params)
@@ -513,11 +504,8 @@ params, opt_state, key, value = p_saga_step(
 )
 ```
 
-For P-SAGA alone, omit the `padam` transform in the chain; P-SAGA then receives raw
-gradients. To reproduce a PyTorch `grad_mult` setting without P-Adam, scale every
-gradient leaf before passing it to P-SAGA. With P-Adam enabled, set its
-`grad_mult` argument instead. Apply scaling once, before either transformation.
-P-SAGA has no additional gradient multiplier.
+For P-SAGA alone, omit the `p_adam` transform in the chain; P-SAGA then receives raw
+gradients. Apply `scale_by_gradient_multiplier` once at the beginning of the chain if scaling is desired.
 
 The same scalar `path_idx` must select the loss and the Optax update. P-SAGA
 records paths on successful updates; loss evaluation and warmup do not mark paths
@@ -528,38 +516,34 @@ For path `i`, incoming gradient `g`, and the stored gradients `h` **before** the
 update, the rule is:
 
 ```text
-seen[i] = True
-denominator = max(1, sum(seen) - 1)
+path_counts[i] += 1
+n_paths_seen = sum(path_counts > 0)
+denominator = max(1, n_paths_seen - 1)
 direction = g - h[i] + sum(h, axis=paths) / denominator
 h[i] = g
 ```
 
 This preserves the repo's PyTorch averaging convention, including on repeated
 visits. Once all `N > 1` paths have been seen, the denominator remains `N - 1`.
-It differs from textbook SAGA's average over all `N` components. The initial
-history is zero, so the first direction equals the incoming gradient. A later
+The initial history is zero, so the first direction equals the incoming gradient. A later
 zero input gradient can still produce a nonzero correction from the history.
 Only the selected history row changes; it stores the input to P-SAGA, including
-P-Adam normalisation if enabled, rather than the corrected output.
+P-Adam normalization if enabled, rather than the corrected output.
 
 Uniform or θ-IS sampling can supply the path. P-SAGA neither chooses paths nor
 uses probabilities in its correction. This matches PyTorch and does not add an
 inverse-probability correction or an unbiased-gradient guarantee. The sampler
 does not force every path to be visited before allowing repeats.
 
-`PSAGAState` is a NamedTuple with `seen`, a boolean vector of length `n_paths`, and
-`path_grads`, a parameter-shaped PyTree with a leading path axis on every leaf.
+`PSAGAState` is a NamedTuple with `path_counts`, an integer vector of length `n_paths`, and
+`prev_path_grads`, a parameter-shaped PyTree with a leading path axis on every leaf.
 Save it alongside parameters, P-Adam state if enabled, PRNG keys, probabilities
 and configuration. Restored NumPy array leaves are accepted. Reset the histories
 when changing path ordering or the gradient transformation that feeds P-SAGA.
 
 P-SAGA stores **one copy of the entire parameter tree per path**, in addition to
 P-Adam's two copies when used together. It sums that history on every update.
-Leaves must have matching float32 or float64 dtypes and shapes. Invalid Python
-path indices raise; invalid array indices, non-finite gradients or numerical
-failures return NaN directions and unchanged P-SAGA state. If a composed step
-fails, keep the original parameters and both original optimiser states; a
-successful P-Adam call cannot automatically roll itself back when P-SAGA fails.
+Leaves must have matching float32 or float64 dtypes and shapes.
 
 ## Compilation and numerical behaviour
 
@@ -580,9 +564,7 @@ match. This is a chosen subgradient at a nondifferentiable point, not a claim th
 the norm has a classical Hessian there.
 
 Configuration is frozen: construct another loss to change its settings, and do
-not mutate the underlying JTFS filters after compilation. Invalid Python path
-indices raise `ValueError`. Invalid scalar array indices produce `NaN` in both
-eager and compiled calls, instead of silently accepting JAX's clamped index.
+not mutate the underlying JTFS filters after compilation.
 
 ## Validation
 
@@ -606,7 +588,7 @@ half in 20 steps.
 
 θ-IS tests compare curvature-vector products and completed warmup estimates with
 PyTorch for a small encoder with two controls and two waveform batches. They also
-check a dense non-symmetric Jacobian, probability normalisation and its floor,
+check a dense non-symmetric Jacobian, probability normalization and its floor,
 zero-curvature warmup, weighted sampling frequencies, invalid probability values,
 convergence diagnostics and a weighted training step.
 
