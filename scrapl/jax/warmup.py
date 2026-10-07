@@ -115,8 +115,8 @@ def warmup_lc_hvp(
     if not isinstance(n_iter, Integral) or isinstance(n_iter, bool) or n_iter < 1:
         raise ValueError("n_iter must be a positive integer")
     _validate_probability_settings(min_prob_frac, eps)
-    params = jax.tree_util.tree_map(jnp.asarray, params)
-    leaves = jax.tree_util.tree_leaves(params)
+    params = jax.tree.map(jnp.asarray, params)
+    leaves = jax.tree.leaves(params)
     if not leaves or not any(leaf.size for leaf in leaves):
         raise ValueError("params must contain trainable arrays")
     if any(leaf.dtype not in (jnp.float32, jnp.float64) for leaf in leaves):

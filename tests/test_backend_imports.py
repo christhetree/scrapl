@@ -112,7 +112,7 @@ def test_jax_loss_and_transformations_work_without_torch():
         """
         import jax
         import jax.numpy as jnp
-        from scrapl.jax import SCRAPLLoss, padam, psaga, warmup_lc_hvp
+        from scrapl.jax import SCRAPLLoss, p_adam, p_saga, warmup_lc_hvp
         from scrapl.single_path_jtfs import TimeFrequencyScrapl
 
         config = dict(shape=128, J=3, Q1=2, Q2=1, J_fr=1, Q_fr=1, use_rho_log1p=True)
@@ -124,10 +124,10 @@ def test_jax_loss_and_transformations_work_without_torch():
         assert jnp.isfinite(value) and value > 0
         assert jnp.isfinite(gradient) and gradient != 0
 
-        adam, saga = padam(loss.n_paths), psaga(loss.n_paths)
+        adam, saga = p_adam(loss.n_paths), p_saga(loss.n_paths)
         direction, _ = jax.jit(adam.update)(gradient, adam.init(gradient), path_idx=0)
         direction, state = jax.jit(saga.update)(direction, saga.init(gradient), path_idx=0)
-        assert jnp.isfinite(direction) and state.seen[0]
+        assert jnp.isfinite(direction) and (state.path_counts > 0)[0]
         transform = TimeFrequencyScrapl(
             shape=128, J=3, Q=(2, 1), J_fr=1, Q_fr=1, backend='jax'
         )
