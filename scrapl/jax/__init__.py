@@ -10,6 +10,7 @@ from .optim import (
     p_adam,
     p_saga,
     scale_by_gradient_multiplier,
+    scrapl_optimizer,
 )
 from .util import safe_lp_norm
 from .warmup import ThetaISResult, theta_importance_probs, warmup_lc_hvp
@@ -24,6 +25,7 @@ __all__ = [
     "p_saga",
     "safe_lp_norm",
     "scale_by_gradient_multiplier",
+    "scrapl_optimizer",
     "theta_importance_probs",
     "warmup_lc_hvp",
 ]
