@@ -2,10 +2,12 @@ import shutil
 
 import pytest
 
-tr = pytest.importorskip("torch")
-from torch import nn
+from scrapl._dependencies import require_backend
 
-from scrapl import SCRAPLLoss
+try:
+    torch = require_backend("torch")
+except ModuleNotFoundError:
+    pytest.skip("PyTorch is not installed", allow_module_level=True)
 
 
 def test_scrapl_loss() -> None:
@@ -97,6 +99,7 @@ def test_scrapl_loss() -> None:
 
 def test_scrapl_loss_warmup() -> None:
     import torch as tr
+    from torch import nn
     from scrapl import SCRAPLLoss
 
     # Setup
