@@ -12,7 +12,7 @@ except ModuleNotFoundError as e:
 
 
 @pytest.mark.parametrize("seed", [42])
-@pytest.mark.parametrize("n_paths", [2])
+@pytest.mark.parametrize("n_paths", [5])
 def test_scrapl_loss(seed: int, n_paths: int) -> None:
     import equinox as eqx
     import jax.numpy as jnp

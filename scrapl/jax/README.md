@@ -383,11 +383,16 @@ Warmup uses all encoder parameter leaves as one group, corresponding to PyTorch'
 aggregation, partial-path jobs, saved warmup directories and automatic adaptive
 refreshes are not part of this JAX API yet. Call warmup outside JIT; it compiles
 each path separately and evaluates theta coordinates and batches sequentially.
-Large models and filter banks may still make warmup expensive.
+Pass `vmap_theta=True` to evaluate theta coordinates in parallel, which is faster
+but multiplies peak memory by the number of theta. `enc_params` can be any PyTree,
+including an `eqx.Module`; its floating-point arrays are differentiated and all
+other leaves are held fixed. Large models and filter banks may still make warmup
+expensive.
 
 Each theta contributes a parameter-gradient vector whose Jacobian need not be
-symmetric. The implementation applies its transpose, matching PyTorch's
-grad-of-grad calculation. Power iteration estimates the magnitude of a dominant
+symmetric. The implementation applies the Jacobian itself with forward-over-reverse
+differentiation, which is cheaper than PyTorch's grad-of-grad calculation of its
+transpose; both have the same eigenvalues. Power iteration estimates the magnitude of a dominant
 eigenvalue; it is a heuristic, not a certified Lipschitz bound. Inspect
 `relative_residuals`: they measure `norm(A v - lambda v) / max(norm(A v), eps)`
 for the last unit iterate. A large residual indicates that the estimate has not
