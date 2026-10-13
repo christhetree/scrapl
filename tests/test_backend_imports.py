@@ -135,10 +135,10 @@ def test_jax_loss_and_transformations_work_without_torch():
         assert jnp.isfinite(coefficients).all()
 
         result = warmup_lc_hvp(
-            loss, jnp.asarray(0.5),
+            loss,
             lambda gain, batch: jnp.broadcast_to(gain, (batch.shape[0], 1)),
             lambda controls: controls[..., None] * target,
-            target[None], key=jax.random.key(2), n_iter=2,
+            target[None], jnp.asarray(0.5), key=jax.random.key(2), n_iter=2,
         )
         assert jnp.isfinite(result.probs).all()
         assert not blocked.intersection(sys.modules)
