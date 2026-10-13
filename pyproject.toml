@@ -35,7 +35,9 @@ torch = [
 jax = [
     "equinox>=0.13.8",
     "jax>=0.4.26",
+    "jaxtyping>=0.3.7",
     "optax>=0.2.8",
+    "tqdm>=4.70.1",
 ]
 test = [
     "pytest>=9.1.1",

@@ -12,7 +12,7 @@ from .optim import (
     scale_by_gradient_multiplier,
     scrapl_optimizer,
 )
-from .util import safe_lp_norm
+from .util import safe_lp_norm, tree_l2_normalize
 from .warmup import ThetaISResult, theta_importance_probs, warmup_lc_hvp
 
 __all__ = [
@@ -27,5 +27,6 @@ __all__ = [
     "scale_by_gradient_multiplier",
     "scrapl_optimizer",
     "theta_importance_probs",
+    "tree_l2_normalize",
     "warmup_lc_hvp",
 ]

@@ -7,14 +7,17 @@ torch = pytest.importorskip("torch")
 
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
+eqx = pytest.importorskip("equinox")
 from jax.flatten_util import ravel_pytree
 
 from scrapl import SCRAPLLoss as TorchLoss
 from scrapl.jax import SCRAPLLoss, theta_importance_probs, warmup_lc_hvp
 from scrapl.jax.warmup import (
-    _power_iteration,
-    _theta_curvature_product,
-    _theta_param_grad,
+    calc_hvp_at_theta_multibatch,
+    calc_largest_eig_power_iter,
+    calc_loss,
+    calc_s_dE_dw_at_theta,
+    generate_random_tangent,
 )
 
 
@@ -57,8 +60,8 @@ def problem():
     return dict(
         loss=loss,
         params=params,
-        theta_fn=encoder,
-        synth_fn=synth,
+        enc_fn=encoder,
+        dec_fn=synth,
         xs=xs,
         torch_loss=torch_loss,
         torch_params=list(torch_params.values()),
@@ -69,7 +72,8 @@ def problem():
 
 def arguments(problem):
     return {
-        name: problem[name] for name in ("loss", "params", "theta_fn", "synth_fn", "xs")
+        "enc_params": problem["params"],
+        **{name: problem[name] for name in ("loss", "enc_fn", "dec_fn", "xs")},
     }
 
 
@@ -81,26 +85,47 @@ def result(problem):
 
 
 @pytest.mark.parametrize("theta_idx", [0, 1])
-def test_curvature_product_matches_pytorch_and_transposed_dense_matrix(
+def test_curvature_product_matches_dense_matrix_and_pytorch_transpose(
     problem, theta_idx
 ):
-    weights, unravel = ravel_pytree(problem["params"])
-    tangent = jax.random.normal(jax.random.key(10), weights.shape)
-    kwargs = dict(
-        unravel=unravel,
-        theta_fn=problem["theta_fn"],
-        synth_fn=problem["synth_fn"],
-        loss=problem["loss"],
-        path_idx=0,
+    w = problem["params"]
+    tangent = generate_random_tangent(jax.random.key(10), w)
+    theta_loss_fn = partial(
+        calc_loss,
+        dec_fn=problem["dec_fn"],
+        loss_fn=partial(problem["loss"], path_idx=0),
     )
     actual = jax.jit(
         partial(
-            _theta_curvature_product, theta_idx=theta_idx, xs=problem["xs"], **kwargs
+            calc_hvp_at_theta_multibatch,
+            theta_idx=theta_idx,
+            xs=problem["xs"],
+            enc_fn=problem["enc_fn"],
+            theta_loss_fn=theta_loss_fn,
         )
-    )(weights, tangent)
+    )(tangent, enc_params=w)
+    actual, _ = ravel_pytree(actual)
+    flat_tangent, _ = ravel_pytree(tangent)
+    weights, unravel = ravel_pytree(w)
+
+    def gradient(weights):
+        return sum(
+            ravel_pytree(
+                calc_s_dE_dw_at_theta(
+                    unravel(weights), x, theta_idx=theta_idx, enc_fn=problem["enc_fn"], theta_loss_fn=theta_loss_fn
+                )
+            )[0]
+            for x in problem["xs"]
+        )
+
+    matrix = jax.jit(jax.jacrev(gradient))(weights)
+    assert np.max(np.abs(matrix - matrix.T)) > 1e-3
+    # Forward-over-reverse computes J @ v
+    np.testing.assert_allclose(actual, matrix @ flat_tangent, rtol=2e-4, atol=2e-5)
+    # PyTorch's grad-of-grad computes J.T @ v, which has the same eigenvalues
     torch_kwargs = [dict(x=torch.tensor(np.asarray(batch))) for batch in problem["xs"]]
     expected = problem["torch_loss"]._calc_param_hvp_multibatch(
-        torch.tensor(np.asarray(tangent)),
+        torch.tensor(np.asarray(flat_tangent)),
         path_idx=0,
         theta_idx=theta_idx,
         theta_fn=problem["torch_encoder"],
@@ -108,16 +133,48 @@ def test_curvature_product_matches_pytorch_and_transposed_dense_matrix(
         theta_fn_kwargs=torch_kwargs,
         params=problem["torch_params"],
     )
-    np.testing.assert_allclose(actual, expected.detach().numpy(), rtol=2e-3, atol=2e-4)
+    np.testing.assert_allclose(
+        expected.detach().numpy(), matrix.T @ flat_tangent, rtol=2e-3, atol=2e-4
+    )
 
-    def gradient(weights):
-        return sum(
-            _theta_param_grad(weights, theta_idx, x, **kwargs) for x in problem["xs"]
-        )
 
-    matrix = jax.jit(jax.jacrev(gradient))(weights)
-    assert np.max(np.abs(matrix - matrix.T)) > 1e-3
-    np.testing.assert_allclose(actual, matrix.T @ tangent, rtol=2e-4, atol=2e-5)
+def test_vmap_theta_matches_sequential_theta(problem, result):
+    vmapped = warmup_lc_hvp(
+        **arguments(problem),
+        key=jax.random.key(3),
+        n_iter=40,
+        min_prob_frac=0.05,
+        vmap_theta=True,
+    )
+    np.testing.assert_allclose(vmapped.curvatures, result.curvatures, rtol=1e-5)
+    np.testing.assert_allclose(vmapped.probs, result.probs, rtol=1e-5)
+    assert np.max(vmapped.relative_residuals) < 1e-3
+
+
+def test_equinox_encoder_with_non_trainable_leaves_matches_dict_params(
+    problem, result
+):
+    class Encoder(eqx.Module):
+        bias: jax.Array
+        matrix: jax.Array
+        step: jax.Array
+        activation: object
+
+        def __call__(self, x):
+            return self.activation(x[:, 0, :2] @ self.matrix + self.bias)
+
+    params = problem["params"]
+    encoder = Encoder(
+        params["bias"], params["matrix"], jnp.array(7, dtype=jnp.int32), jax.nn.sigmoid
+    )
+    args = {**arguments(problem), "enc_params": encoder}
+    args["enc_fn"] = lambda model, x: model(x)
+    actual = warmup_lc_hvp(
+        **args, key=jax.random.key(3), n_iter=40, min_prob_frac=0.05
+    )
+    np.testing.assert_allclose(actual.curvatures, result.curvatures, rtol=1e-5)
+    np.testing.assert_allclose(actual.probs, result.probs, rtol=1e-5)
+    assert np.max(actual.relative_residuals) < 1e-3
 
 
 def test_completed_warmup_matches_pytorch(problem, result):
@@ -200,7 +257,7 @@ def test_weighted_training_step_preserves_selected_path_loss_and_gradient(
     loss, params, x = problem["loss"], problem["params"], problem["xs"][0]
 
     def objective(params, key, probs):
-        prediction = problem["synth_fn"](problem["theta_fn"](params, x))
+        prediction = problem["dec_fn"](problem["enc_fn"](params, x))
         return loss(x, prediction, key=key, probs=probs)
 
     evaluate = jax.jit(jax.value_and_grad(objective))
@@ -209,7 +266,7 @@ def test_weighted_training_step_preserves_selected_path_loss_and_gradient(
     index = int(loss.sample_path(key, probs=result.probs))
     expected_value, expected_gradient = jax.value_and_grad(
         lambda params: loss(
-            x, problem["synth_fn"](problem["theta_fn"](params, x)), path_idx=index
+            x, problem["dec_fn"](problem["enc_fn"](params, x)), path_idx=index
         )
     )(params)
     np.testing.assert_allclose(value, expected_value, rtol=2e-5)
@@ -224,7 +281,7 @@ def test_weighted_training_step_preserves_selected_path_loss_and_gradient(
 
 def test_zero_curvature_warmup_is_uniform(problem):
     args = arguments(problem)
-    args["theta_fn"] = lambda params, x: jnp.full((x.shape[0], 2), 0.5)
+    args["enc_fn"] = lambda params, x: jnp.full((x.shape[0], 2), 0.5)
     result = warmup_lc_hvp(**args, key=jax.random.key(5), n_iter=2, min_prob_frac=0.1)
     np.testing.assert_array_equal(result.curvatures, np.zeros_like(result.curvatures))
     np.testing.assert_array_equal(
@@ -237,16 +294,17 @@ def test_zero_curvature_warmup_is_uniform(problem):
 
 def test_power_iteration_reports_nonconvergence_and_negative_dominant_eigenvalue():
     matrix = jnp.array([[-3.0, 1.0], [0.0, 1.0]])
-    value, residual = _power_iteration(
-        lambda v: matrix @ v, jnp.array([1.0, 1.0]), 40, 1e-12
+    value, errors = calc_largest_eig_power_iter(
+        lambda v: matrix @ v, jnp.array([1.0, 1.0]), n_iter=40, eps=1e-12
     )
     np.testing.assert_allclose(value, 3.0, rtol=1e-6)
-    assert residual < 1e-6
+    assert errors.shape == (40,)
+    assert errors[-1] < 1e-6
     rotation = jnp.array([[0.0, -1.0], [1.0, 0.0]])
-    _, residual = _power_iteration(
-        lambda v: rotation @ v, jnp.array([1.0, 0.0]), 20, 1e-12
+    _, errors = calc_largest_eig_power_iter(
+        lambda v: rotation @ v, jnp.array([1.0, 0.0]), n_iter=20, eps=1e-12
     )
-    assert residual > 0.9
+    assert errors[-1] > 0.9
 
 
 @pytest.mark.parametrize("case", ["zero", "negative", "nan", "unnormalised"])
@@ -287,12 +345,12 @@ def test_invalid_warmup_settings(problem, kwargs):
 def test_invalid_training_arrays_and_encoder_shapes(problem):
     args = arguments(problem)
     with pytest.raises(ValueError, match="trainable"):
-        warmup_lc_hvp(**{**args, "params": {}}, key=jax.random.key(0))
+        warmup_lc_hvp(**{**args, "enc_params": {}}, key=jax.random.key(0))
     with pytest.raises(ValueError, match="xs must"):
         warmup_lc_hvp(**{**args, "xs": args["xs"][0]}, key=jax.random.key(0))
-    with pytest.raises(ValueError, match="theta_fn"):
+    with pytest.raises(ValueError, match="enc_fn"):
         warmup_lc_hvp(
-            **{**args, "theta_fn": lambda params, x: jnp.ones((1,))},
+            **{**args, "enc_fn": lambda params, x: jnp.ones((1,))},
             key=jax.random.key(0),
         )
     with pytest.raises(ValueError, match="finite"):
