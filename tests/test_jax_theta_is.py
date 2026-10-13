@@ -307,6 +307,50 @@ def test_power_iteration_reports_nonconvergence_and_negative_dominant_eigenvalue
     assert errors[-1] > 0.9
 
 
+def test_power_iteration_stops_early_once_residual_is_below_tol():
+    matrix = jnp.array([[-3.0, 1.0], [0.0, 1.0]])
+    tangent = jnp.array([1.0, 1.0])
+    _, full_errors = calc_largest_eig_power_iter(
+        lambda v: matrix @ v, tangent, n_iter=40, eps=1e-12
+    )
+    value, errors = calc_largest_eig_power_iter(
+        lambda v: matrix @ v, tangent, n_iter=40, eps=1e-12, tol=1e-3
+    )
+    n_steps = int(np.argmax(np.asarray(full_errors) < 1e-3)) + 1
+    assert n_steps < 40
+    assert errors.shape == (40,)
+    np.testing.assert_allclose(errors[:n_steps], full_errors[:n_steps], rtol=1e-6)
+    np.testing.assert_array_equal(errors[n_steps:], errors[n_steps - 1])
+    assert errors[-1] < 1e-3
+    np.testing.assert_allclose(value, 3.0, rtol=1e-3)
+    # An operator that never converges runs all steps.
+    rotation = jnp.array([[0.0, -1.0], [1.0, 0.0]])
+    _, errors = calc_largest_eig_power_iter(
+        lambda v: rotation @ v, jnp.array([1.0, 0.0]), n_iter=20, eps=1e-12, tol=1e-3
+    )
+    assert errors[-1] > 0.9
+
+
+@pytest.mark.parametrize("vmap_theta", [False, True])
+def test_warmup_with_tol_matches_full_warmup(problem, result, vmap_theta):
+    actual = warmup_lc_hvp(
+        **arguments(problem),
+        key=jax.random.key(3),
+        n_iter=40,
+        tol=1e-4,
+        min_prob_frac=0.05,
+        vmap_theta=vmap_theta,
+    )
+    assert np.max(actual.relative_residuals) < 1e-4
+    np.testing.assert_allclose(actual.curvatures, result.curvatures, rtol=1e-3)
+    np.testing.assert_allclose(actual.probs, result.probs, rtol=1e-3)
+
+
+def test_invalid_tol_is_rejected(problem):
+    with pytest.raises(AssertionError, match="tol"):
+        warmup_lc_hvp(**arguments(problem), key=jax.random.key(0), tol=-1.0)
+
+
 @pytest.mark.parametrize("case", ["zero", "negative", "nan", "unnormalised"])
 def test_invalid_probabilities_are_rejected_under_jit(problem, case):
     loss = problem["loss"]

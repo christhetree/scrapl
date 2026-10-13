@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from jaxtyping import Array, Float, Int, Key, PyTree
+from jaxtyping import Array, Bool, Float, Int, Key, PyTree
 from tqdm import tqdm
 
 from .loss import SCRAPLLoss
@@ -312,6 +312,7 @@ def calc_largest_eig_power_iter(
     *,
     n_iter: int,
     eps: float,
+    tol: float = 0.0,
 ) -> tuple[Float[Array, ""], Float[Array, "n_iter"]]:
     """Estimates the dominant eigenvalue magnitude of a linear operator.
 
@@ -319,18 +320,23 @@ def calc_largest_eig_power_iter(
         hvp_fn (Callable[[PyTree[Float[Array, "..."]]], PyTree[Float[Array, "..."]]]): Linear operator applied to
             PyTrees with the structure of `tangent`.
         tangent (PyTree[Float[Array, "..."]]): Initial vector for the power iteration.
-        n_iter (int): Number of power iteration steps.
+        n_iter (int): Maximum number of power iteration steps.
         eps (float): Small epsilon for numerical stability.
+        tol (float, optional): Stops early once the relative residual drops below
+            `tol`. 0.0 always runs `n_iter` steps.
+            Defaults to 0.0.
 
     Returns:
         tuple[Float[Array, ""], Float[Array, "n_iter"]]: (eig, errors) where eig is the scalar
         dominant eigenvalue magnitude and errors are the relative residuals
-        `norm(Hv - eig * v) / norm(Hv)` of shape `(n_iter,)`.
+        `norm(Hv - eig * v) / norm(Hv)` of shape `(n_iter,)`. Entries after an
+        early stop repeat the final residual, so `errors[-1]` is always the final
+        residual.
     """
 
     # noinspection PyTypeHints
     def power_iter_step(
-        tangent: PyTree[Float[Array, "..."]], _: None
+        tangent: PyTree[Float[Array, "..."]],
     ) -> tuple[
         PyTree[Float[Array, "..."]], tuple[Float[Array, ""], Float[Array, ""]]
     ]:
@@ -347,17 +353,36 @@ def calc_largest_eig_power_iter(
         error = residual_norm / jnp.maximum(Hv_norm, eps)
         return Hv, (eig, error)
 
-    # Run power iteration for n_iter steps, collecting eigenval estimates and residuals.
-    _, (eigs, errors) = jax.lax.scan(
-        f=power_iter_step, init=tangent, xs=None, length=n_iter
+    # Run power iteration for at most n_iter steps, stopping once the relative
+    # residual drops below tol. A while loop is used instead of a scan since warmup
+    # is never differentiated through.
+    def cond_fn(state: tuple) -> Bool[Array, ""]:
+        step_idx, _, _, error, _ = state
+        return (step_idx < n_iter) & ~(error < tol)
+
+    def body_fn(state: tuple) -> tuple:
+        step_idx, tangent, _, _, errors = state
+        Hv, (eig, error) = power_iter_step(tangent)
+        errors = errors.at[step_idx].set(error)
+        return step_idx + 1, Hv, eig, error, errors
+
+    _, (eig_shape, error_shape) = jax.eval_shape(power_iter_step, tangent)
+    init_state = (
+        jnp.asarray(0),
+        tangent,
+        jnp.zeros((), eig_shape.dtype),
+        jnp.asarray(jnp.inf, error_shape.dtype),
+        jnp.zeros((n_iter,), error_shape.dtype),
     )
-    eig = jnp.abs(eigs[-1])  # Return the eigenvalue magnitude.
+    n_steps, _, eig, error, errors = jax.lax.while_loop(cond_fn, body_fn, init_state)
+    # Repeat the final residual after an early stop.
+    errors = jnp.where(jnp.arange(n_iter) < n_steps, errors, error)
+    eig = jnp.abs(eig)  # Return the eigenvalue magnitude.
     return eig, errors
 
 
 def warmup_lc_hvp(
     loss: SCRAPLLoss,
-    enc_params: PyTree[Float[Array, "..."]],
     enc_fn: Callable[
         [PyTree[Float[Array, "..."]], Float[Array, "bs n_ch n_samples"]],
         Float[Array, "bs n_theta"],
@@ -366,9 +391,11 @@ def warmup_lc_hvp(
         [Float[Array, "bs n_theta"]], Float[Array, "bs n_ch n_samples"]
     ],
     xs: Float[Array, "n_batches bs n_ch n_samples"],
+    enc_params: PyTree[Float[Array, "..."]],
     *,
     key: Key[Array, ""],
     n_iter: int = 20,
+    tol: float = 0.01,
     min_prob_frac: float = 0.0,
     eps: float = 1e-12,
     vmap_theta: bool = False,
@@ -383,18 +410,23 @@ def warmup_lc_hvp(
 
     Args:
         loss (SCRAPLLoss): SCRAPL loss module.
-        enc_params (PyTree): Encoder PyTree, such as a dict of arrays or an
-            `eqx.Module`. Its floating-point arrays are treated as one group of
-            weights and all other leaves are held fixed.
         enc_fn (Callable[[PyTree[Float[Array, "..."]], Float[Array, "bs n_ch n_samples"]], Float[Array, "bs n_theta"]]):
             Deterministic encoder `enc_fn(enc_params, x)` mapping a waveform batch to `(batch, n_theta)`.
         dec_fn (Callable[[Float[Array, "bs n_theta"]], Float[Array, "bs n_ch n_samples"]]): Deterministic decoder
             `dec_fn(theta)` reconstructing the waveform batch.
         xs (Float[Array, "n_batches bs n_ch n_samples"]): Waveform batches of shape
             `(n_batches, batch, channels, samples)`.
+        enc_params (PyTree): Encoder PyTree, such as a dict of arrays or an
+            `eqx.Module`. Its floating-point arrays are treated as one group of
+            weights and all other leaves are held fixed.
         key (Key[Array, ""]): JAX PRNG key for the initial power iteration vectors.
-        n_iter (int, optional): Number of power iteration steps.
+        n_iter (int, optional): Maximum number of power iteration steps.
             Defaults to 20.
+        tol (float, optional): Stops each power iteration early once its relative
+            residual drops below `tol`. 0.0 always runs `n_iter` steps. Early
+            stopping saves no time with `vmap_theta=True`, since the vmapped loop
+            runs until every theta has stopped.
+            Defaults to 0.01.
         min_prob_frac (float, optional): Fraction of the probability mass that is
             distributed uniformly over all paths, in [0, 1).
             Defaults to 0.0.
@@ -411,6 +443,7 @@ def warmup_lc_hvp(
 
     Raises:
         AssertionError: If `n_iter` is not a positive integer.
+        AssertionError: If `tol` is not finite and non-negative.
         AssertionError: If `min_prob_frac` is not in [0, 1).
         AssertionError: If `eps` is not finite and positive or not representable in
             the parameter dtypes.
@@ -425,6 +458,7 @@ def warmup_lc_hvp(
     assert (
         isinstance(n_iter, Integral) and not isinstance(n_iter, bool) and n_iter > 0
     ), "n_iter must be a positive integer"
+    assert math.isfinite(tol) and tol >= 0, "tol must be finite and non-negative"
     assert 0 <= min_prob_frac < 1, "min_prob_frac must be in [0, 1)"
     assert math.isfinite(eps) and eps > 0, "eps must be finite and positive"
 
@@ -478,7 +512,7 @@ def warmup_lc_hvp(
     n_theta = theta.shape[1]
     log.info(
         f"Starting warmup_lc_hvp for {loss.n_paths} path(s), {n_theta} theta, "
-        f"{xs.shape[0]} batch(es), {n_iter} iter (vmap_theta = {vmap_theta})"
+        f"{xs.shape[0]} batch(es), {n_iter} iter, tol = {tol} (vmap_theta = {vmap_theta})"
     )
 
     def calc_path_eigs(
@@ -505,7 +539,7 @@ def warmup_lc_hvp(
                 theta_loss_fn=theta_loss_fn,
             )
             eig, errors = calc_largest_eig_power_iter(
-                hvp_fn, tangent, n_iter=n_iter, eps=eps
+                hvp_fn, tangent, n_iter=n_iter, eps=eps, tol=tol
             )
             final_error = errors[-1]
             return eig, final_error

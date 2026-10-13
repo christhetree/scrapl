@@ -9,7 +9,8 @@ import functools
 import logging
 import os
 from collections import defaultdict
-from typing import Union, Optional, Iterable, List, Dict, Any, Callable, Literal
+from collections.abc import Callable, Iterable
+from typing import Any, Literal
 
 import hessian_eigenthings
 import torch as tr
@@ -51,8 +52,8 @@ class SCRAPLLoss(nn.Module):
         Q2: int,
         J_fr: int,
         Q_fr: int,
-        T: Optional[Union[str, int]] = None,
-        F: Optional[Union[str, int]] = None,
+        T: str | int | None = None,
+        F: str | int | None = None,
         p: int = 2,
         use_rho_log1p: bool = False,
         log1p_eps: float = 1e-3,  # TODO: what's a good default here?
@@ -62,7 +63,7 @@ class SCRAPLLoss(nn.Module):
         sample_all_paths_first: bool = False,
         n_theta: int = 1,
         min_prob_frac: float = 0.0,
-        probs_path: Optional[str] = None,
+        probs_path: str | None = None,
         eps: float = 1e-12,
         p_adam_b1: float = 0.9,
         p_adam_b2: float = 0.999,
@@ -84,11 +85,11 @@ class SCRAPLLoss(nn.Module):
             Q2 (int): Wavelets per octave in the JTFS (2nd order temporal filters)
             J_fr (int): Number of octaves in the JTFS (2nd order frequential filters)
             Q_fr (int): Wavelets per octave in the JTFS (2nd order frequential filters)
-            T (Optional[Union[str, int]]): Temporal averaging size in samples of the
+            T (str | int | None): Temporal averaging size in samples of the
                 JTFS. If 'global', averages over the entire signal. If 'None', averages
                 over J**2 samples.
                 Defaults to None.
-            F (Optional[Union[str, int]]): Frequential averaging size in frequency
+            F (str | int | None): Frequential averaging size in frequency
                 bins of the JTFS. If 'global', averages over all bins. If 'None',
                 averages over J_fr * Q_fr bins.
                 Defaults to None.
@@ -135,7 +136,7 @@ class SCRAPLLoss(nn.Module):
                 the uniform sampling probability assigned to any path,
                 ensuring no path has zero probability of being sampled.
                 Defaults to 0.0.
-            probs_path (Optional[str], optional): File path to a `.pt` file containing
+            probs_path (str | None, optional): File path to a `.pt` file containing
                 pre-computed sampling probabilities for the scattering paths.
                 Defaults to None.
             eps (float, optional): A small value for numerical stability in probability
@@ -242,6 +243,10 @@ class SCRAPLLoss(nn.Module):
         self.all_log_vals = tr.full(
             (self.n_theta, self.n_paths), self.log_eps, dtype=tr.double
         )
+        # Relative residuals ||Hv - eig * v|| / ||Hv|| of the warmup power iterations
+        self.all_rel_residuals = tr.full(
+            (self.n_theta, self.n_paths), float("nan"), dtype=tr.double
+        )
         self.all_log_probs = tr.full(
             (
                 self.n_theta,
@@ -317,12 +322,13 @@ class SCRAPLLoss(nn.Module):
         # Update probs setup
         self.updated_path_indices.clear()
         self.all_log_vals.fill_(self.log_eps)
+        self.all_rel_residuals.fill_(float("nan"))
         self.all_log_probs.fill_(self.log_unif_prob)
         self._recompute_probs()
         self.loaded_probs_path = None
         log.info(f"Cleared state")
 
-    def state_dict(self, *args, **kwargs) -> Dict[str, T]:
+    def state_dict(self, *args, **kwargs) -> dict[str, T]:
         # TODO: support resuming training with grad hooks
         state_dict = super().state_dict(*args, **kwargs)
         global_prefix = kwargs.get("prefix", "")
@@ -349,7 +355,7 @@ class SCRAPLLoss(nn.Module):
             state_dict[f"{global_prefix}{attr}"] = val
         return state_dict
 
-    def load_state_dict(self, state_dict: Dict[str, T], *args, **kwargs) -> None:
+    def load_state_dict(self, state_dict: dict[str, T], *args, **kwargs) -> None:
         global_prefix = kwargs.get("prefix", "")
         for attr in self.STATE_DICT_INCLUDED_ATTRS:
             assert f"{global_prefix}{attr}" in state_dict
@@ -440,7 +446,7 @@ class SCRAPLLoss(nn.Module):
 
         return grad
 
-    def sample_path(self, seed: Optional[int] = None) -> int:
+    def sample_path(self, seed: int | None = None) -> int:
         if seed is None:
             rand_gen = None
         else:
@@ -483,8 +489,8 @@ class SCRAPLLoss(nn.Module):
         self,
         x: T,
         x_target: T,
-        seed: Optional[int] = None,
-        path_idx: Optional[int] = None,
+        seed: int | None = None,
+        path_idx: int | None = None,
     ) -> T:
         assert x.ndim == x_target.ndim == 3
         bs, n_ch, n_samples = x.size()
@@ -586,11 +592,11 @@ class SCRAPLLoss(nn.Module):
         path_idx: int,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: Dict[str, Any],
-        params: List[Parameter],
-        theta_idx: Optional[int] = None,
-        seed: Optional[int] = None,
-        synth_fn_kwargs: Optional[Dict[str, Any]] = None,
+        theta_fn_kwargs: dict[str, Any],
+        params: list[Parameter],
+        theta_idx: int | None = None,
+        seed: int | None = None,
+        synth_fn_kwargs: dict[str, Any] | None = None,
     ) -> T:
         if synth_fn_kwargs is None:
             synth_fn_kwargs = {}
@@ -643,7 +649,7 @@ class SCRAPLLoss(nn.Module):
         self,
         tangent: T,
         param_grad: T,
-        params: List[Parameter],
+        params: list[Parameter],
         retain_graph: bool = False,
     ) -> T:
         assert tangent.ndim == 1
@@ -662,9 +668,9 @@ class SCRAPLLoss(nn.Module):
     def _calc_largest_eig(
         self,
         param_grad: T,
-        params: List[Parameter],
+        params: list[Parameter],
         n_iter: int = 20,
-    ) -> T:
+    ) -> tuple[T, T]:
         apply_fn = functools.partial(
             self._calc_param_hvp,
             param_grad=param_grad,
@@ -674,27 +680,29 @@ class SCRAPLLoss(nn.Module):
         size = param_grad.size(0)
         hvp_op = LambdaOperator(apply_fn, size)
         use_gpu = param_grad.is_cuda
-        eigs, _ = hessian_eigenthings.deflated_power_iteration(
+        eigs, _, rel_residuals = hessian_eigenthings.deflated_power_iteration(
             operator=hvp_op,
             num_eigenthings=1,
             power_iter_steps=n_iter,
             to_numpy=False,
             use_gpu=use_gpu,
+            return_rel_residuals=True,
         )
         eig1 = tr.from_numpy(eigs.copy()).float()
-        return eig1
+        rel_residual1 = tr.from_numpy(rel_residuals.copy()).double()
+        return eig1, rel_residual1
 
     def calc_theta_eigs(
         self,
         path_idx: int,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: Dict[str, Any],
-        params: List[Parameter],
-        seed: Optional[int] = None,
-        synth_fn_kwargs: Optional[Dict[str, Any]] = None,
+        theta_fn_kwargs: dict[str, Any],
+        params: list[Parameter],
+        seed: int | None = None,
+        synth_fn_kwargs: dict[str, Any] | None = None,
         n_iter: int = 20,
-    ) -> T:
+    ) -> tuple[T, T]:
         theta_param_grad = self._calc_batch_theta_param_grad(
             path_idx,
             theta_fn,
@@ -705,12 +713,17 @@ class SCRAPLLoss(nn.Module):
             synth_fn_kwargs=synth_fn_kwargs,
         )
         theta_eigs = []
+        theta_rel_residuals = []
         for theta_idx in range(self.n_theta):
             param_grad = theta_param_grad[theta_idx, :]
-            eig1 = self._calc_largest_eig(param_grad, params, n_iter=n_iter)
+            eig1, rel_residual1 = self._calc_largest_eig(
+                param_grad, params, n_iter=n_iter
+            )
             theta_eigs.append(eig1)
+            theta_rel_residuals.append(rel_residual1)
         theta_eigs = tr.cat(theta_eigs, dim=0)
-        return theta_eigs
+        theta_rel_residuals = tr.cat(theta_rel_residuals, dim=0)
+        return theta_eigs, theta_rel_residuals
 
     def _calc_param_hvp_multibatch(
         self,
@@ -719,9 +732,9 @@ class SCRAPLLoss(nn.Module):
         theta_idx: int,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: List[Dict[str, Any]],
-        params: List[Parameter],
-        synth_fn_kwargs: Optional[List[Dict[str, Any]]] = None,
+        theta_fn_kwargs: list[dict[str, Any]],
+        params: list[Parameter],
+        synth_fn_kwargs: list[dict[str, Any]] | None = None,
     ) -> T:
         if synth_fn_kwargs is None:
             assert theta_fn_kwargs, "theta_fn_kwargs must not be empty"
@@ -760,11 +773,11 @@ class SCRAPLLoss(nn.Module):
         theta_idx: int,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: List[Dict[str, Any]],
-        params: List[Parameter],
-        synth_fn_kwargs: Optional[List[Dict[str, Any]]] = None,
+        theta_fn_kwargs: list[dict[str, Any]],
+        params: list[Parameter],
+        synth_fn_kwargs: list[dict[str, Any]] | None = None,
         n_iter: int = 20,
-    ) -> T:
+    ) -> tuple[T, T]:
         apply_fn = functools.partial(
             self._calc_param_hvp_multibatch,
             path_idx=path_idx,
@@ -778,29 +791,32 @@ class SCRAPLLoss(nn.Module):
         size = sum(p.numel() for p in params)
         hvp_op = LambdaOperator(apply_fn, size)
         use_gpu = params[0].is_cuda
-        eigs, _ = hessian_eigenthings.deflated_power_iteration(
+        eigs, _, rel_residuals = hessian_eigenthings.deflated_power_iteration(
             operator=hvp_op,
             num_eigenthings=1,
             power_iter_steps=n_iter,
             to_numpy=False,
             use_gpu=use_gpu,
+            return_rel_residuals=True,
         )
         eig1 = tr.from_numpy(eigs.copy()).float()
-        return eig1
+        rel_residual1 = tr.from_numpy(rel_residuals.copy()).double()
+        return eig1, rel_residual1
 
     def calc_theta_eigs_multibatch(
         self,
         path_idx: int,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: List[Dict[str, Any]],
-        params: List[Parameter],
-        synth_fn_kwargs: Optional[List[Dict[str, Any]]] = None,
+        theta_fn_kwargs: list[dict[str, Any]],
+        params: list[Parameter],
+        synth_fn_kwargs: list[dict[str, Any]] | None = None,
         n_iter: int = 20,
-    ) -> T:
+    ) -> tuple[T, T]:
         theta_eigs = []
+        theta_rel_residuals = []
         for theta_idx in range(self.n_theta):
-            eig1 = self._calc_theta_largest_eig_multibatch(
+            eig1, rel_residual1 = self._calc_theta_largest_eig_multibatch(
                 path_idx,
                 theta_idx,
                 theta_fn,
@@ -811,8 +827,10 @@ class SCRAPLLoss(nn.Module):
                 n_iter=n_iter,
             )
             theta_eigs.append(eig1)
+            theta_rel_residuals.append(rel_residual1)
         theta_eigs = tr.cat(theta_eigs, dim=0)
-        return theta_eigs
+        theta_rel_residuals = tr.cat(theta_rel_residuals, dim=0)
+        return theta_eigs, theta_rel_residuals
 
     def _aggregate_vals_and_update_probs(
         self,
@@ -842,12 +860,12 @@ class SCRAPLLoss(nn.Module):
         self,
         theta_fn: Callable[..., T],
         synth_fn: Callable[[T, ...], T],
-        theta_fn_kwargs: List[Dict[str, Any]],
-        params: List[Parameter],
-        synth_fn_kwargs: Optional[List[Dict[str, Any]]] = None,
+        theta_fn_kwargs: list[dict[str, Any]],
+        params: list[Parameter],
+        synth_fn_kwargs: list[dict[str, Any]] | None = None,
         start_path_idx: int = 0,
-        end_path_idx: Optional[int] = None,
-        save_dir: Optional[str] = "scrapl_warmup",
+        end_path_idx: int | None = None,
+        save_dir: str | None = "scrapl_warmup",
         n_iter: int = 20,
         agg: Literal["none", "mean", "max", "med"] = "none",
         force_multibatch: bool = False,
@@ -875,18 +893,18 @@ class SCRAPLLoss(nn.Module):
                 `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor
                 `x_hat` of shape `(n_batches, n_ch, n_samples)`. This function should
                 be deterministic during warmup, but can be non-deterministic otherwise.
-            theta_fn_kwargs (List[Dict[str, Any]]): A list of dictionaries, where each
+            theta_fn_kwargs (list[dict[str, Any]]): A list of dictionaries, where each
                 dictionary contains a batch of input arguments for `theta_fn`. One of
                 these arguments must be the input signal `x` of shape
                 `(n_batches, n_ch, n_samples)`. The length of this list determines the
                 number of batches used for the loss landscape curvature estimation and
                 is a tradeoff between computational cost and curvature estimation
                 accuracy.
-            params (List[Parameter]): A list of encoder parameters (learnable weights)
+            params (list[Parameter]): A list of encoder parameters (learnable weights)
                 involved in the computation of θ_synth. These
                 parameters must have no prior gradients (i.e. `p.grad is None` for all
                 `p` in `params`) before calling this method.
-            synth_fn_kwargs (Optional[List[Dict[str, Any]]], optional): A list of
+            synth_fn_kwargs (list[dict[str, Any]] | None, optional): A list of
                 dictionaries corresponding to `theta_fn_kwargs`, containing additional
                 arguments for `synth_fn`. If provided, must have the same length as
                 `theta_fn_kwargs`.
@@ -894,10 +912,10 @@ class SCRAPLLoss(nn.Module):
             start_path_idx (int, optional): The starting index of the scattering paths
                 to compute. Used for parallelizing the warmup across multiple devices.
                 Defaults to 0.
-            end_path_idx (Optional[int], optional): The ending index (exclusive) of
+            end_path_idx (int | None, optional): The ending index (exclusive) of
                 the scattering paths to compute. If None, defaults to `self.n_paths`.
                 Defaults to None.
-            save_dir (Optional[str], optional): Directory path where intermediate
+            save_dir (str | None, optional): Directory path where intermediate
                 eigenvalues (`vals_{path_idx}.pt`) and the final path sampling
                 probability distribution (`probs.pt`) will be saved.
                 Defaults to "scrapl_warmup".
@@ -977,8 +995,9 @@ class SCRAPLLoss(nn.Module):
         # Compute the theta LCs for each path
         for path_idx in range(start_path_idx, end_path_idx):
             vals = []
+            rel_residuals = []
             for param_group in param_groups:
-                curr_vals = calc_theta_eigs_fn(
+                curr_vals, curr_rel_residuals = calc_theta_eigs_fn(
                     path_idx=path_idx,
                     theta_fn=theta_fn,
                     synth_fn=synth_fn,
@@ -990,7 +1009,11 @@ class SCRAPLLoss(nn.Module):
                 # TODO: double check this
                 curr_vals = curr_vals.abs()
                 vals.append(curr_vals)
+                rel_residuals.append(curr_rel_residuals)
                 log.info(f"path_idx = {path_idx}, curr_vals = {curr_vals}")
+            # Keep the worst relative residual across param groups
+            rel_residuals = tr.stack(rel_residuals, dim=0)
+            self.all_rel_residuals[:, path_idx] = rel_residuals.max(dim=0).values
             # Aggregate the theta LCs across all params
             vals = tr.stack(vals, dim=0)
 
@@ -1024,8 +1047,8 @@ class SCRAPLLoss(nn.Module):
         n_paths: int,
         eps: float,
         min_prob: float = 0.0,
-        vals: Optional[T] = None,
-        updated_indices: Optional[List[int]] = None,
+        vals: T | None = None,
+        updated_indices: list[int] | None = None,
     ) -> None:
         assert probs.shape == (n_paths,)
         assert tr.allclose(
@@ -1077,9 +1100,9 @@ class SCRAPLLoss(nn.Module):
     @staticmethod
     def check_is_deterministic(
         theta_fn: Callable[..., T],
-        theta_fn_kwargs: Dict[str, Any],
+        theta_fn_kwargs: dict[str, Any],
         synth: Callable[[T, ...], T],
-        synth_fn_kwargs: Optional[Dict[str, Any]] = None,
+        synth_fn_kwargs: dict[str, Any] | None = None,
     ) -> bool:
         theta_hat_1 = theta_fn(**theta_fn_kwargs)
         theta_hat_2 = theta_fn(**theta_fn_kwargs)

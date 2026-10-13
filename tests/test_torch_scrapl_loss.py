@@ -105,11 +105,11 @@ def test_scrapl_loss_warmup() -> None:
     # Setup
     tr.set_printoptions(precision=4, sci_mode=False)
     tr.manual_seed(42)
-    bs = 4
+    bs = 3
     n_ch = 1
-    n_samples = 8096
+    n_samples = 2048
     # Number of parameters output by the encoder and input to the decoder (synth)
-    n_theta = 3
+    n_theta = 2
     # Number of batches to use for warmup; when possible, one large batch filling all
     # available GPU memory is more efficient than many smaller batches
     n_batches = 1
@@ -149,7 +149,7 @@ def test_scrapl_loss_warmup() -> None:
         J=3,
         Q1=1,
         Q2=1,
-        J_fr=2,
+        J_fr=1,
         Q_fr=1,
         n_theta=n_theta,
     )

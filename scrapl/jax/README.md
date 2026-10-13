@@ -203,10 +203,10 @@ print(f"Uniform path sampling probability: {float(loss_fn.unif_prob):.6f}")
 # Run warmup
 warmup = warmup_lc_hvp(
     loss_fn,
-    params,
     theta_fn,
     synth_fn,
     xs,
+    params,
     key=jax.random.key(4),
     n_iter=20,
     min_prob_frac=0.0,
@@ -324,7 +324,7 @@ def synthesiser(theta):
     return (theta @ basis)[:, None, :]
 
 warmup = warmup_lc_hvp(
-    loss_fn, params, encoder, synthesiser, xs,
+    loss_fn, encoder, synthesiser, xs, params,
     key=jax.random.key(3), n_iter=40, min_prob_frac=0.05,
 )
 print("Probabilities:", warmup.probs)
