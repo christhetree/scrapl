@@ -13,7 +13,12 @@ from .optim import (
     scrapl_optimizer,
 )
 from .util import safe_lp_norm, tree_l2_normalize
-from .warmup import ThetaISResult, theta_importance_probs, warmup_lc_hvp
+from .warmup import (
+    ThetaISResult,
+    load_warmup_from_dir,
+    theta_importance_probs,
+    warmup_lc_hvp,
+)
 
 __all__ = [
     "SCRAPLLoss",
@@ -21,6 +26,7 @@ __all__ = [
     "PSAGAState",
     "ThetaISResult",
     "adam_grad_norm_cont",
+    "load_warmup_from_dir",
     "p_adam",
     "p_saga",
     "safe_lp_norm",

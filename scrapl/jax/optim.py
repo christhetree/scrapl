@@ -3,7 +3,6 @@ import math
 import os
 from typing import Any, NamedTuple
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import optax
@@ -134,12 +133,11 @@ def p_adam(
         """Initializes the PAdamState with zeroed moment arrays.
 
         Args:
-            params (optax.Params): Model parameter PyTree.
+            params (optax.Params): Model parameter PyTree of floating-point arrays.
 
         Returns:
             PAdamState: Initial state with moments allocated for all paths.
         """
-        params = eqx.filter(params, eqx.is_inexact_array)
         scrapl_t = jnp.asarray(0, dtype=jnp.int32)
         prev_t_s = jnp.zeros(n_paths, dtype=jnp.int32)
         prev_m_s = jax.tree.map(
@@ -256,12 +254,11 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
         """Initializes the PSAGAState with zeroed visit counts and zeroed gradients.
 
         Args:
-            params (optax.Params): Model parameter PyTree.
+            params (optax.Params): Model parameter PyTree of floating-point arrays.
 
         Returns:
             PSAGAState: Initial state with gradient history allocated for all paths.
         """
-        params = eqx.filter(params, eqx.is_inexact_array)
         path_counts = jnp.zeros(n_paths, dtype=jnp.int32)
         prev_path_grads = jax.tree.map(
             lambda p: jnp.zeros((n_paths, *p.shape), dtype=p.dtype), params
