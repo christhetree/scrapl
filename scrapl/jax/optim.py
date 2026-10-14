@@ -6,6 +6,7 @@ from typing import Any, NamedTuple
 import jax
 import jax.numpy as jnp
 import optax
+from jaxtyping import Array, Float, Int, PyTree
 
 logging.basicConfig()
 log = logging.getLogger(__name__)
@@ -35,15 +36,15 @@ def scale_by_gradient_multiplier(
         math.isfinite(grad_mult) and grad_mult > 0
     ), "grad_mult must be finite and positive"
 
-    def init_fn(params: optax.Params) -> optax.EmptyState:
+    def init_fn(params: PyTree[Float[Array, "..."]]) -> optax.EmptyState:
         return optax.EmptyState()
 
     def update_fn(
-        updates: optax.Updates,
+        updates: PyTree[Float[Array, "..."]],
         state: optax.EmptyState,
-        params: optax.Params | None = None,
+        params: PyTree[Float[Array, "..."]] | None = None,
         **extra_args: Any,
-    ) -> tuple[optax.Updates, optax.EmptyState]:
+    ) -> tuple[PyTree[Float[Array, "..."]], optax.EmptyState]:
         scaled_grads = jax.tree.map(lambda g: g * grad_mult, updates)
         return scaled_grads, state
 
@@ -51,30 +52,32 @@ def scale_by_gradient_multiplier(
 
 
 def adam_grad_norm_cont(
-    grad: jax.Array,
-    prev_m: jax.Array,
-    prev_v: jax.Array,
-    t: jax.Array | float,
-    prev_t: jax.Array | float,
+    grad: Float[Array, "*shape"],
+    prev_m: Float[Array, "*shape"],
+    prev_v: Float[Array, "*shape"],
+    t: Float[Array, ""] | float,
+    prev_t: Float[Array, ""] | float,
     b1: float = 0.9,
     b2: float = 0.999,
     eps: float = 1e-8,
-) -> tuple[jax.Array, jax.Array, jax.Array]:
+) -> tuple[Float[Array, "*shape"], Float[Array, "*shape"], Float[Array, "*shape"]]:
     """Computes continuous time-step Adam gradient normalization per path.
 
     Args:
-        grad (jax.Array): Current path gradient tensor.
-        prev_m (jax.Array): Previous first moment estimate for the path.
-        prev_v (jax.Array): Previous second moment estimate for the path.
-        t (jax.Array | float): Normalized current time-step (curr_t / n_paths).
-        prev_t (jax.Array | float): Normalized previous time-step (prev_t / n_paths).
+        grad (Float[Array, "*shape"]): Current path gradient tensor.
+        prev_m (Float[Array, "*shape"]): Previous first moment estimate for the path.
+        prev_v (Float[Array, "*shape"]): Previous second moment estimate for the path.
+        t (Float[Array, ""] | float): Normalized current time-step (curr_t / n_paths).
+        prev_t (Float[Array, ""] | float): Normalized previous time-step
+            (prev_t / n_paths).
         b1 (float, optional): β1 Adam hyperparameter. Defaults to 0.9.
         b2 (float, optional): β2 Adam hyperparameter. Defaults to 0.999.
         eps (float, optional): Small epsilon for numerical stability. Defaults to 1e-8.
 
     Returns:
-        tuple[jax.Array, jax.Array, jax.Array]: (grad_hat, m, v) where grad_hat is
-        normalized gradient, and m, v are updated moments.
+        tuple[Float[Array, "*shape"], Float[Array, "*shape"], Float[Array, "*shape"]]:
+        (grad_hat, m, v) where grad_hat is normalized gradient, and m, v are updated
+        moments, all with the same shape as `grad`.
     """
     delta_t = t - prev_t
     eff_b1 = b1**delta_t
@@ -90,10 +93,10 @@ def adam_grad_norm_cont(
 class PAdamState(NamedTuple):
     """Completed update count, path timestamps, and per-path moment PyTrees."""
 
-    scrapl_t: jax.Array
-    prev_t_s: jax.Array
-    prev_m_s: optax.Updates
-    prev_v_s: optax.Updates
+    scrapl_t: Int[Array, ""]
+    prev_t_s: Int[Array, "n_paths"]
+    prev_m_s: PyTree[Float[Array, "n_paths ..."]]
+    prev_v_s: PyTree[Float[Array, "n_paths ..."]]
 
 
 def p_adam(
@@ -129,11 +132,12 @@ def p_adam(
     assert 0 <= b1 < 1 and 0 <= b2 < 1, "b1 and b2 must be in [0, 1)"
     assert math.isfinite(eps) and eps > 0, "eps must be finite and positive"
 
-    def init_fn(params: optax.Params) -> PAdamState:
+    def init_fn(params: PyTree[Float[Array, "..."]]) -> PAdamState:
         """Initializes the PAdamState with zeroed moment arrays.
 
         Args:
-            params (optax.Params): Model parameter PyTree of floating-point arrays.
+            params (PyTree[Float[Array, "..."]]): Model parameter PyTree of
+                floating-point arrays.
 
         Returns:
             PAdamState: Initial state with moments allocated for all paths.
@@ -152,23 +156,24 @@ def p_adam(
         )
 
     def update_fn(
-        updates: optax.Updates,
+        updates: PyTree[Float[Array, "..."]],
         state: PAdamState,
-        params: optax.Params | None = None,
+        params: PyTree[Float[Array, "..."]] | None = None,
         *,
         path_idx: int,
-    ) -> tuple[optax.Updates, PAdamState]:
+    ) -> tuple[PyTree[Float[Array, "..."]], PAdamState]:
         """Normalizes path gradients and returns updated 𝒫-Adam state.
 
         Args:
-            updates (optax.Updates): Incoming gradients PyTree.
+            updates (PyTree[Float[Array, "..."]]): Incoming gradients PyTree.
             state (PAdamState): Current 𝒫-Adam optimizer state.
-            params (optax.Params | None, optional): Model parameters.
+            params (PyTree[Float[Array, "..."]] | None, optional): Model parameters.
                 Defaults to None.
             path_idx (int): Path index used for the current step.
 
         Returns:
-            tuple[optax.Updates, PAdamState]: Normalized gradients and updated state.
+            tuple[PyTree[Float[Array, "..."]], PAdamState]: Normalized gradients
+            and updated state.
 
         Raises:
             AssertionError: If `path_idx` is out of range [0, n_paths).
@@ -183,8 +188,14 @@ def p_adam(
         prev_t_norm = prev_t.astype(jnp.float32) / n_paths
 
         def _update_leaf(
-            grad: jax.Array, prev_m_s: jax.Array, prev_v_s: jax.Array
-        ) -> tuple[jax.Array, jax.Array, jax.Array]:
+            grad: Float[Array, "*shape"],
+            prev_m_s: Float[Array, "n_paths *shape"],
+            prev_v_s: Float[Array, "n_paths *shape"],
+        ) -> tuple[
+            Float[Array, "*shape"],
+            Float[Array, "n_paths *shape"],
+            Float[Array, "n_paths *shape"],
+        ]:
             prev_m = prev_m_s[path_idx]
             prev_v = prev_v_s[path_idx]
             grad_hat, m, v = adam_grad_norm_cont(
@@ -228,8 +239,8 @@ def p_adam(
 class PSAGAState(NamedTuple):
     """Path visit counts and the most recent input gradient for every path."""
 
-    path_counts: jax.Array
-    prev_path_grads: optax.Updates
+    path_counts: Int[Array, "n_paths"]
+    prev_path_grads: PyTree[Float[Array, "n_paths ..."]]
 
 
 def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
@@ -250,11 +261,12 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
     """
     assert 0 < n_paths, "n_paths must be a positive integer"
 
-    def init_fn(params: optax.Params) -> PSAGAState:
+    def init_fn(params: PyTree[Float[Array, "..."]]) -> PSAGAState:
         """Initializes the PSAGAState with zeroed visit counts and zeroed gradients.
 
         Args:
-            params (optax.Params): Model parameter PyTree of floating-point arrays.
+            params (PyTree[Float[Array, "..."]]): Model parameter PyTree of
+                floating-point arrays.
 
         Returns:
             PSAGAState: Initial state with gradient history allocated for all paths.
@@ -266,23 +278,24 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
         return PSAGAState(path_counts=path_counts, prev_path_grads=prev_path_grads)
 
     def update_fn(
-        updates: optax.Updates,
+        updates: PyTree[Float[Array, "..."]],
         state: PSAGAState,
-        params: optax.Params | None = None,
+        params: PyTree[Float[Array, "..."]] | None = None,
         *,
         path_idx: int,
-    ) -> tuple[optax.Updates, PSAGAState]:
+    ) -> tuple[PyTree[Float[Array, "..."]], PSAGAState]:
         """Corrects gradients using historical path gradients and returns new state.
 
         Args:
-            updates (optax.Updates): Incoming gradients PyTree.
+            updates (PyTree[Float[Array, "..."]]): Incoming gradients PyTree.
             state (PSAGAState): Current 𝒫-SAGA optimizer state.
-            params (optax.Params | None, optional): Model parameters.
+            params (PyTree[Float[Array, "..."]] | None, optional): Model parameters.
                 Defaults to None.
             path_idx (int): Path index used for the current step.
 
         Returns:
-            tuple[optax.Updates, PSAGAState]: Corrected gradients and updated state.
+            tuple[PyTree[Float[Array, "..."]], PSAGAState]: Corrected gradients
+            and updated state.
 
         Raises:
             AssertionError: If `path_idx` is out of range [0, n_paths).
@@ -294,8 +307,9 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
         denominator = jnp.maximum(1, n_paths_seen - 1)
 
         def _update_leaf(
-            grad: jax.Array, prev_path_grads: jax.Array
-        ) -> tuple[jax.Array, jax.Array]:
+            grad: Float[Array, "*shape"],
+            prev_path_grads: Float[Array, "n_paths *shape"],
+        ) -> tuple[Float[Array, "*shape"], Float[Array, "n_paths *shape"]]:
             prev_avg_grad = prev_path_grads.sum(axis=0) / denominator.astype(grad.dtype)
             prev_path_grad = prev_path_grads[path_idx]
             saga_grad = grad - prev_path_grad + prev_avg_grad
