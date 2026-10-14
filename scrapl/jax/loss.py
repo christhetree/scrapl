@@ -221,7 +221,7 @@ class SCRAPLLoss(eqx.Module):
                 sampling. Must be provided if `path_idx` is None.
                 Defaults to None.
             path_idx (int | Int[Array, ""] | None, optional): Specific path index in
-                `[0, n_paths)`. If provided, `key` is ignored.
+                `[0, n_paths)`. If provided, `key` and `probs` are ignored.
                 Defaults to None.
             probs (Float[Array, "n_paths"] | None, optional): Path sampling
                 probabilities of shape `(n_paths,)` used when sampling with `key`.
@@ -231,11 +231,14 @@ class SCRAPLLoss(eqx.Module):
             Float[Array, ""]: The scalar SCRAPL loss value.
 
         Raises:
-            AssertionError: If `x` and `x_target` shapes/sample lengths do not match or are empty.
+            AssertionError: If `x` and `x_target` shapes do not match, are empty, or
+                do not have `shape` samples.
             AssertionError: If `x` or `x_target` dtypes are not float32 or float64.
             AssertionError: If neither `key` nor `path_idx` is provided.
+            AssertionError: If `probs` is invalid when sampling with `key` (see
+                `sample_path`).
+            AssertionError: If `path_idx` is not a scalar integer.
             AssertionError: If `path_idx` is out of the valid range `[0, n_paths)`.
-            TypeError: If `path_idx` is not a scalar integer.
         """
         x, x_target = jnp.asarray(x), jnp.asarray(x_target)
         assert (
@@ -259,6 +262,9 @@ class SCRAPLLoss(eqx.Module):
                 and path_idx.dtype != jnp.bool_
             ), "path_idx must be a scalar integer"
             path_idx = int(path_idx)
+        assert isinstance(path_idx, Integral) and not isinstance(
+            path_idx, bool
+        ), "path_idx must be a scalar integer"
 
         assert (
             0 <= path_idx < self.n_paths

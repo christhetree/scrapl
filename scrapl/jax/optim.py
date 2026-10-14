@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+from numbers import Integral
 from typing import Any, NamedTuple
 
 import jax
@@ -129,7 +130,9 @@ def p_adam(
         AssertionError: If `b1` or `b2` is not in [0, 1).
         AssertionError: If `eps` is not finite and positive.
     """
-    assert 0 < n_paths, "n_paths must be a positive integer"
+    assert (
+        isinstance(n_paths, Integral) and not isinstance(n_paths, bool) and n_paths > 0
+    ), "n_paths must be a positive integer"
     assert 0 <= b1 < 1 and 0 <= b2 < 1, "b1 and b2 must be in [0, 1)"
     assert math.isfinite(eps) and eps > 0, "eps must be finite and positive"
 
@@ -171,7 +174,9 @@ def p_adam(
             state (PAdamState): Current 𝒫-Adam optimizer state.
             params (PyTree[Float[Array, "..."]] | None, optional): Model parameters.
                 Defaults to None.
-            path_idx (int): Path index used for the current step.
+            path_idx (int): Path index in [0, n_paths) used for the current step.
+                Must be a concrete value, not traced, since it is range-checked
+                in Python. Under `jax.jit`, mark it as a static argument.
 
         Returns:
             tuple[PyTree[Float[Array, "..."]], PAdamState]: Normalized gradients
@@ -261,7 +266,9 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
     Raises:
         AssertionError: If `n_paths` is not a positive integer.
     """
-    assert 0 < n_paths, "n_paths must be a positive integer"
+    assert (
+        isinstance(n_paths, Integral) and not isinstance(n_paths, bool) and n_paths > 0
+    ), "n_paths must be a positive integer"
 
     def init_fn(params: PyTree[Float[Array, "..."]]) -> PSAGAState:
         """Initializes the PSAGAState with zeroed visit counts and zeroed gradients.
@@ -294,7 +301,9 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
             state (PSAGAState): Current 𝒫-SAGA optimizer state.
             params (PyTree[Float[Array, "..."]] | None, optional): Model parameters.
                 Defaults to None.
-            path_idx (int): Path index used for the current step.
+            path_idx (int): Path index in [0, n_paths) used for the current step.
+                Must be a concrete value, not traced, since it is range-checked
+                in Python. Under `jax.jit`, mark it as a static argument.
 
         Returns:
             tuple[PyTree[Float[Array, "..."]], PSAGAState]: Corrected gradients
@@ -354,9 +363,11 @@ def scrapl_optimizer(
 ) -> optax.GradientTransformationExtraArgs:
     """Convenience factory creating a chained Optax optimizer for SCRAPL.
 
-    Chains gradient multiplier scaling, Pathwise Adam (𝒫-Adam) normalization,
-    Pathwise SAGA (𝒫-SAGA) variance reduction, optional weight decay, and learning
-    rate scaling into a single Optax transformation pipeline supporting `path_idx`.
+    Chains gradient multiplier scaling (skipped if `grad_mult` is 1.0), Pathwise
+    Adam (𝒫-Adam) normalization (if `use_p_adam`), Pathwise SAGA (𝒫-SAGA)
+    variance reduction (if `use_p_saga`), weight decay (if `weight_decay` > 0), and
+    learning rate scaling into a single Optax transformation pipeline supporting
+    `path_idx`.
 
     For documentation, examples, hyperparameters, and best practices, please visit:
     https://github.com/christhetree/scrapl
@@ -395,7 +406,9 @@ def scrapl_optimizer(
         AssertionError: If `p_adam_eps` is not finite and positive.
         AssertionError: If `weight_decay` is negative.
     """
-    assert 0 < n_paths, "n_paths must be a positive integer"
+    assert (
+        isinstance(n_paths, Integral) and not isinstance(n_paths, bool) and n_paths > 0
+    ), "n_paths must be a positive integer"
     assert (
         math.isfinite(grad_mult) and grad_mult > 0
     ), "grad_mult must be finite and positive"
