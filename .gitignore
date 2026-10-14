@@ -568,3 +568,4 @@ scratch.py
 checkpoints/
 ckpt/
 data/
+.claude/

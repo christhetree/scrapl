@@ -6,6 +6,7 @@ from numbers import Integral
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+from jaxtyping import Array, Float, Int, Key
 
 from ..single_path_jtfs.jax import TimeFrequencyScrapl
 from .util import safe_lp_norm
@@ -143,15 +144,15 @@ class SCRAPLLoss(eqx.Module):
         return 1.0 / self.n_paths
 
     def sample_path(
-        self, key: jax.Array, *, probs: jax.Array | None = None
+        self, key: Key[Array, ""], *, probs: Float[Array, "n_paths"] | None = None
     ) -> int:
         """Samples a single path index using a JAX PRNG key and optional probabilities.
 
         Args:
-            key (jax.Array): JAX PRNG key (e.g. from `jax.random.key(seed)`).
-            probs (jax.Array | None, optional): 1D array of shape `(n_paths,)`
-                specifying sampling probabilities for each path. Must sum to 1.0.
-                If None, paths are sampled uniformly at random.
+            key (Key[Array, ""]): JAX PRNG key (e.g. from `jax.random.key(seed)`).
+            probs (Float[Array, "n_paths"] | None, optional): 1D array of shape
+                `(n_paths,)` specifying sampling probabilities for each path. Must
+                sum to 1.0. If None, paths are sampled uniformly at random.
                 Defaults to None.
 
         Returns:
@@ -182,8 +183,12 @@ class SCRAPLLoss(eqx.Module):
         return path_idx
 
     def _path_loss(
-        self, x: jax.Array, x_target: jax.Array, *, path_idx: int
-    ) -> jax.Array:
+        self,
+        x: Float[Array, "bs n_ch n_samples"],
+        x_target: Float[Array, "bs n_ch n_samples"],
+        *,
+        path_idx: int,
+    ) -> Float[Array, ""]:
         """Computes the Lp distance between x and x_target for a single scattering path."""
         n2, n_fr = self.scrapl_keys[path_idx]
         coef = self.jtfs.scattering_singlepath(x, n2, n_fr)["coef"]
@@ -198,30 +203,32 @@ class SCRAPLLoss(eqx.Module):
 
     def __call__(
         self,
-        x: jax.Array,
-        x_target: jax.Array,
+        x: Float[Array, "bs n_ch n_samples"],
+        x_target: Float[Array, "bs n_ch n_samples"],
         *,
-        key: jax.Array | None = None,
-        path_idx: int | jax.Array | None = None,
-        probs: jax.Array | None = None,
-    ) -> jax.Array:
+        key: Key[Array, ""] | None = None,
+        path_idx: int | Int[Array, ""] | None = None,
+        probs: Float[Array, "n_paths"] | None = None,
+    ) -> Float[Array, ""]:
         """Computes the SCRAPL distance loss between input and target signals.
 
         Args:
-            x (jax.Array): Input signal batch of shape `(batch, channels, samples)`.
-            x_target (jax.Array): Target signal batch of shape `(batch, channels, samples)`.
-            key (jax.Array | None, optional): JAX PRNG key for random path sampling.
-                Must be provided if `path_idx` is None.
+            x (Float[Array, "bs n_ch n_samples"]): Input signal batch of shape
+                `(batch, channels, samples)`.
+            x_target (Float[Array, "bs n_ch n_samples"]): Target signal batch of shape
+                `(batch, channels, samples)`.
+            key (Key[Array, ""] | None, optional): JAX PRNG key for random path
+                sampling. Must be provided if `path_idx` is None.
                 Defaults to None.
-            path_idx (int | jax.Array | None, optional): Specific path index in
+            path_idx (int | Int[Array, ""] | None, optional): Specific path index in
                 `[0, n_paths)`. If provided, `key` is ignored.
                 Defaults to None.
-            probs (jax.Array | None, optional): Path sampling probabilities used when
-                sampling with `key`.
+            probs (Float[Array, "n_paths"] | None, optional): Path sampling
+                probabilities of shape `(n_paths,)` used when sampling with `key`.
                 Defaults to None.
 
         Returns:
-            jax.Array: The scalar SCRAPL loss value.
+            Float[Array, ""]: The scalar SCRAPL loss value.
 
         Raises:
             AssertionError: If `x` and `x_target` shapes/sample lengths do not match or are empty.

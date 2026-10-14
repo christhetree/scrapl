@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import re
 from functools import partial
 from numbers import Integral
 from typing import Any, Callable, NamedTuple
@@ -122,8 +123,8 @@ def load_warmup_from_dir(
         sampling probabilities for every path.
 
     Raises:
-        AssertionError: If `warmup_dir` does not exist or is missing results for
-            any path.
+        AssertionError: If `warmup_dir` does not exist, is missing results for
+            any path, or has results for path indices >= `loss.n_paths`.
         AssertionError: If any saved curvature estimate is not finite.
         AssertionError: If any saved curvature estimate is negative.
         AssertionError: If the saved results do not all have the same shape.
@@ -139,6 +140,17 @@ def load_warmup_from_dir(
         if not os.path.isfile(vals_path)
     ]
     assert not missing, f"Warmup results are missing for path indices {missing}"
+    # Extra results mean the warmup was run with a loss that has more paths.
+    extra = sorted(
+        int(match.group(1))
+        for name in os.listdir(warmup_dir)
+        if (match := re.fullmatch(r"vals_(\d+)\.npz", name))
+        and int(match.group(1)) >= loss.n_paths
+    )
+    assert not extra, (
+        f"Warmup results exist for path indices {extra} outside "
+        f"[0, {loss.n_paths}); the warmup was run with a different loss"
+    )
     curvatures, relative_residuals = [], []
     for path_idx, vals_path in enumerate(vals_paths):
         with np.load(vals_path) as vals:
@@ -467,13 +479,14 @@ def calc_largest_eig_power_iter(
         errors = errors.at[step_idx].set(error)
         return step_idx + 1, Hv, eig, error, errors
 
-    _, (eig_shape, error_shape) = jax.eval_shape(power_iter_step, tangent)
+    # The eigenvalue and residual use the dtype promoted across all tangent leaves.
+    dtype = jnp.result_type(*jax.tree.leaves(tangent))
     init_state = (
         jnp.asarray(0),
         tangent,
-        jnp.zeros((), eig_shape.dtype),
-        jnp.asarray(jnp.inf, error_shape.dtype),
-        jnp.zeros((n_iter,), error_shape.dtype),
+        jnp.zeros((), dtype),
+        jnp.asarray(jnp.inf, dtype),
+        jnp.zeros((n_iter,), dtype),
     )
     n_steps, _, eig, error, errors = jax.lax.while_loop(cond_fn, body_fn, init_state)
     # Repeat the final residual after an early stop.
@@ -734,11 +747,13 @@ def warmup_lc_hvp(
         relative_residuals[path_idx] = errors
         # Save intermediate results for parallel computation
         if save_dir is not None:
-            np.savez(
-                os.path.join(save_dir, f"vals_{path_idx}.npz"),
-                curvatures=eigs,
-                relative_residuals=errors,
-            )
+            # Write to a temporary file and rename it so that an interrupted run
+            # never leaves a partial file behind.
+            save_path = os.path.join(save_dir, f"vals_{path_idx}.npz")
+            tmp_path = f"{save_path}.tmp"
+            with open(tmp_path, "wb") as f:
+                np.savez(f, curvatures=eigs, relative_residuals=errors)
+            os.replace(tmp_path, save_path)
         log.debug(f"Theta-IS warmup: path {path_idx + 1}/{loss.n_paths} complete")
     curvatures = jnp.asarray(curvatures)
     relative_residuals = jnp.asarray(relative_residuals)
