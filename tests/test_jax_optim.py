@@ -15,10 +15,9 @@ try:
     import torch.nn as nn
     from scrapl import SCRAPLLoss as TorchSCRAPLLoss
     from scrapl.jax import (
+        PAdamState,
+        PSAGAState,
         SCRAPLLoss as JaxSCRAPLLoss,
-        p_adam,
-        p_saga,
-        scale_by_gradient_multiplier,
         scrapl_optimizer,
     )
     from tests._toy_models import (
@@ -83,10 +82,6 @@ def build_evaluate_and_update_fn(
 
 def setup_optim_experiment(
     seed: int,
-    optimizer_fn: Callable[
-        [int],
-        optax.GradientTransformationExtraArgs | optax.GradientTransformation,
-    ],
     *,
     use_p_adam: bool = False,
     use_p_saga: bool = False,
@@ -132,7 +127,17 @@ def setup_optim_experiment(
     torch_loss.attach_params(setup.torch_params)
     torch_opt = tr.optim.SGD(setup.torch_params, lr=lr, weight_decay=weight_decay)
 
-    optimizer = optimizer_fn(jax_loss.n_paths)
+    optimizer = scrapl_optimizer(
+        learning_rate=lr,
+        weight_decay=weight_decay,
+        n_paths=jax_loss.n_paths,
+        grad_mult=grad_mult,
+        use_p_adam=use_p_adam,
+        use_p_saga=use_p_saga,
+        p_adam_b1=p_adam_b1,
+        p_adam_b2=p_adam_b2,
+        p_adam_eps=p_adam_eps,
+    )
     opt_state = optimizer.init(eqx.filter(setup.encoder_jax, eqx.is_inexact_array))
     evaluate_and_update = build_evaluate_and_update_fn(
         optimizer=optimizer,
@@ -283,208 +288,130 @@ def run_optim_step(
     return encoder_jax, opt_state, loop_key, path_idx
 
 
-@pytest.mark.parametrize("seed", [42])
-@pytest.mark.parametrize("n_iters", [3])
-def test_grad_multiplier(seed: int, n_iters: int) -> None:
-    grad_mult = 1e8
-    lr = 0.05
-    weight_decay = 0.01
-    exp = setup_optim_experiment(
-        seed=seed,
-        optimizer_fn=lambda n_paths: scrapl_optimizer(
-            learning_rate=lr,
-            weight_decay=weight_decay,
-            n_paths=n_paths,
-            grad_mult=grad_mult,
-            use_p_adam=False,
-            use_p_saga=False,
-        ),
-        use_p_adam=False,
-        use_p_saga=False,
-        grad_mult=grad_mult,
-        weight_decay=weight_decay,
-        lr=lr,
+def find_state(opt_state: optax.OptState, state_type: type) -> Any:
+    """Returns the state of the transform with the given state type in an Optax chain."""
+    return next(s for s in opt_state if isinstance(s, state_type))
+
+
+def assert_p_adam_state_matches(state: PAdamState, torch_loss: TorchSCRAPLLoss) -> None:
+    """Verifies P-Adam moment buffers and step timestamps match the PyTorch hooks."""
+    for i, (m_leaf, v_leaf) in enumerate(
+        zip(
+            jax.tree.leaves(state.prev_m_s),
+            jax.tree.leaves(state.prev_v_s),
+            strict=True,
+        )
+    ):
+        np.testing.assert_allclose(
+            np.asarray(m_leaf), torch_loss.p_adam_m[i].numpy(), rtol=2e-4, atol=1e-6
+        )
+        np.testing.assert_allclose(
+            np.asarray(v_leaf), torch_loss.p_adam_v[i].numpy(), rtol=3e-4, atol=1e-6
+        )
+    np.testing.assert_array_equal(
+        np.asarray(state.prev_t_s),
+        [torch_loss.p_adam_t[0].get(i, 0) for i in range(torch_loss.n_paths)],
     )
-    encoder_jax = exp.setup.encoder_jax
-    opt_state = exp.opt_state
-    loop_key = exp.setup.loop_key
+    assert int(state.scrapl_t) == torch_loss.scrapl_t
 
-    pbar = tqdm(range(n_iters), desc="Testing Gradient Multiplier iterations")
 
-    for step in pbar:
-        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
-            exp, encoder_jax, opt_state, loop_key
+def assert_p_saga_state_matches(state: PSAGAState, torch_loss: TorchSCRAPLLoss) -> None:
+    """Verifies P-SAGA gradient history buffers and path visit counts match PyTorch."""
+    for i, g_leaf in enumerate(jax.tree.leaves(state.prev_path_grads)):
+        np.testing.assert_allclose(
+            np.asarray(g_leaf),
+            torch_loss.prev_path_grads[i].numpy(),
+            rtol=2e-4,
+            atol=1e-6,
         )
-        pbar.set_postfix(step=step, path_idx=path_idx)
-
-
-@pytest.mark.parametrize("seed", [42])
-@pytest.mark.parametrize("n_iters", [10])
-def test_p_adam(seed: int, n_iters: int) -> None:
-    grad_mult = 1e8
-    b1, b2, eps, lr, weight_decay = 0.9, 0.999, 1e-8, 0.05, 0.01
-
-    exp = setup_optim_experiment(
-        seed=seed,
-        optimizer_fn=lambda n_paths: scrapl_optimizer(
-            learning_rate=lr,
-            weight_decay=weight_decay,
-            n_paths=n_paths,
-            grad_mult=grad_mult,
-            use_p_adam=True,
-            use_p_saga=False,
-            p_adam_b1=b1,
-            p_adam_b2=b2,
-            p_adam_eps=eps,
-        ),
-        use_p_adam=True,
-        use_p_saga=False,
-        grad_mult=grad_mult,
-        weight_decay=weight_decay,
-        p_adam_b1=b1,
-        p_adam_b2=b2,
-        p_adam_eps=eps,
-        lr=lr,
+    np.testing.assert_array_equal(
+        np.asarray(state.path_counts),
+        [torch_loss.path_counts.get(i, 0) for i in range(torch_loss.n_paths)],
     )
-    encoder_jax = exp.setup.encoder_jax
-    opt_state = exp.opt_state
-    loop_key = exp.setup.loop_key
 
-    pbar = tqdm(range(n_iters), desc="Testing P-Adam iterations")
 
-    for step in pbar:
-        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
-            exp, encoder_jax, opt_state, loop_key
-        )
-        pbar.set_postfix(step=step, path_idx=path_idx)
-        padam_state = opt_state[1]
+def array_leaves(tree: Any) -> list[jax.Array]:
+    """Returns the array leaves of a pytree, skipping static leaves like activations."""
+    return jax.tree.leaves(eqx.filter(tree, eqx.is_array))
 
-        # 3. Verify P-Adam moment buffers match
-        for i, (m_leaf, v_leaf) in enumerate(
-            zip(
-                jax.tree.leaves(padam_state.prev_m_s),
-                jax.tree.leaves(padam_state.prev_v_s),
-                strict=True,
-            )
-        ):
-            np.testing.assert_allclose(
-                np.asarray(m_leaf),
-                exp.torch_loss.p_adam_m[i].numpy(),
-                rtol=2e-4,
-                atol=1e-6,
-            )
-            np.testing.assert_allclose(
-                np.asarray(v_leaf),
-                exp.torch_loss.p_adam_v[i].numpy(),
-                rtol=3e-4,
-                atol=1e-6,
-            )
 
-        # 4. Verify step timestamps match
-        np.testing.assert_array_equal(
-            np.asarray(padam_state.prev_t_s),
-            [
-                exp.torch_loss.p_adam_t[0].get(i, 0)
-                for i in range(exp.torch_loss.n_paths)
-            ],
-        )
-        assert int(padam_state.scrapl_t) == exp.torch_loss.scrapl_t
+# Every optimizer configuration also uses the gradient multiplier and weight decay
+optimizer_configs = pytest.mark.parametrize(
+    "use_p_adam, use_p_saga",
+    [(False, False), (True, False), (False, True), (True, True)],
+    ids=["grad_mult", "p_adam", "p_saga", "p_adam_p_saga"],
+)
 
 
 @pytest.mark.parametrize("seed", [42])
 @pytest.mark.parametrize("n_iters", [10])
-def test_p_saga(seed: int, n_iters: int) -> None:
-    grad_mult = 1e8
-    lr = 0.05
-    weight_decay = 0.01
-
-    exp = setup_optim_experiment(
-        seed=seed,
-        optimizer_fn=lambda n_paths: scrapl_optimizer(
-            learning_rate=lr,
-            weight_decay=weight_decay,
-            n_paths=n_paths,
-            grad_mult=grad_mult,
-            use_p_adam=False,
-            use_p_saga=True,
-        ),
-        use_p_adam=False,
-        use_p_saga=True,
-        grad_mult=grad_mult,
-        weight_decay=weight_decay,
-        lr=lr,
-    )
-    encoder_jax = exp.setup.encoder_jax
-    opt_state = exp.opt_state
-    loop_key = exp.setup.loop_key
-
-    pbar = tqdm(range(n_iters), desc="Testing P-SAGA iterations")
-
-    for step in pbar:
-        encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
-            exp, encoder_jax, opt_state, loop_key
-        )
-        pbar.set_postfix(step=step, path_idx=path_idx)
-        psaga_state = opt_state[1]
-
-        # 3. Verify P-SAGA gradient history buffers match
-        for i, g_leaf in enumerate(jax.tree.leaves(psaga_state.prev_path_grads)):
-            np.testing.assert_allclose(
-                np.asarray(g_leaf),
-                exp.torch_loss.prev_path_grads[i].numpy(),
-                rtol=2e-4,
-                atol=1e-6,
-            )
-
-        # 4. Verify path visit counts match
-        np.testing.assert_array_equal(
-            np.asarray(psaga_state.path_counts),
-            [
-                exp.torch_loss.path_counts.get(i, 0)
-                for i in range(exp.torch_loss.n_paths)
-            ],
-        )
-
-
-@pytest.mark.parametrize("seed", [42])
-@pytest.mark.parametrize("n_iters", [10])
-def test_grad_multiplier_p_adam_p_saga(seed: int, n_iters: int) -> None:
-    grad_mult = 1e8
-    b1, b2, eps, lr, weight_decay = 0.9, 0.999, 1e-8, 0.05, 0.01
-
-    exp = setup_optim_experiment(
-        seed=seed,
-        optimizer_fn=lambda n_paths: scrapl_optimizer(
-            learning_rate=lr,
-            weight_decay=weight_decay,
-            n_paths=n_paths,
-            grad_mult=grad_mult,
-            use_p_adam=True,
-            use_p_saga=True,
-            p_adam_b1=b1,
-            p_adam_b2=b2,
-            p_adam_eps=eps,
-        ),
-        use_p_adam=True,
-        use_p_saga=True,
-        grad_mult=grad_mult,
-        p_adam_b1=b1,
-        p_adam_b2=b2,
-        p_adam_eps=eps,
-        lr=lr,
-        weight_decay=weight_decay,
-    )
+@optimizer_configs
+def test_optimizer_matches_pytorch(
+    seed: int, n_iters: int, use_p_adam: bool, use_p_saga: bool
+) -> None:
+    exp = setup_optim_experiment(seed, use_p_adam=use_p_adam, use_p_saga=use_p_saga)
     encoder_jax = exp.setup.encoder_jax
     opt_state = exp.opt_state
     loop_key = exp.setup.loop_key
 
     pbar = tqdm(
         range(n_iters),
-        desc="Testing Gradient Multiplier + P-Adam + P-SAGA iterations",
+        desc=f"Testing optimizer (use_p_adam={use_p_adam}, use_p_saga={use_p_saga})",
     )
-
     for step in pbar:
         encoder_jax, opt_state, loop_key, path_idx = run_optim_step(
             exp, encoder_jax, opt_state, loop_key
         )
         pbar.set_postfix(step=step, path_idx=path_idx)
+        if use_p_adam:
+            assert_p_adam_state_matches(
+                find_state(opt_state, PAdamState), exp.torch_loss
+            )
+        if use_p_saga:
+            assert_p_saga_state_matches(
+                find_state(opt_state, PSAGAState), exp.torch_loss
+            )
+
+
+@optimizer_configs
+def test_resuming_saved_optimizer_state_matches_uninterrupted_training(
+    tmp_path, use_p_adam: bool, use_p_saga: bool
+) -> None:
+    n_iters, save_at = 6, 3
+    exp = setup_optim_experiment(42, use_p_adam=use_p_adam, use_p_saga=use_p_saga)
+    step_keys = jax.random.split(exp.setup.loop_key, n_iters)
+    path_indices = [int(exp.jax_loss.sample_path(k)) for k in step_keys]
+
+    def train(
+        encoder: EncoderJAX, opt_state: optax.OptState, steps: list[int]
+    ) -> tuple[EncoderJAX, optax.OptState]:
+        for path_idx in steps:
+            _, _, encoder, opt_state = exp.evaluate_and_update(
+                encoder, opt_state, path_idx
+            )
+        return encoder, opt_state
+
+    uninterrupted = train(exp.setup.encoder_jax, exp.opt_state, path_indices)
+
+    # 1. Train part of the way, then save the model and optimizer state to disk
+    checkpoint = train(exp.setup.encoder_jax, exp.opt_state, path_indices[:save_at])
+    checkpoint_path = tmp_path / "checkpoint.eqx"
+    eqx.tree_serialise_leaves(checkpoint_path, checkpoint)
+
+    # 2. Load it into a freshly initialized model and optimizer state, as a new
+    # process would, and verify nothing was lost in the round trip
+    template = (exp.setup.encoder_jax, exp.opt_state)
+    restored = eqx.tree_deserialise_leaves(checkpoint_path, template)
+    for restored_leaf, saved_leaf in zip(
+        array_leaves(restored), array_leaves(checkpoint), strict=True
+    ):
+        np.testing.assert_array_equal(np.asarray(restored_leaf), np.asarray(saved_leaf))
+
+    # 3. Resumed training matches uninterrupted training exactly
+    resumed = train(*restored, path_indices[save_at:])
+    for resumed_leaf, expected_leaf in zip(
+        array_leaves(resumed), array_leaves(uninterrupted), strict=True
+    ):
+        np.testing.assert_array_equal(
+            np.asarray(resumed_leaf), np.asarray(expected_leaf)
+        )
