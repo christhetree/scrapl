@@ -125,9 +125,13 @@ def load_warmup_from_dir(
     Raises:
         AssertionError: If `warmup_dir` does not exist, is missing results for
             any path, or has results for path indices >= `loss.n_paths`.
-        AssertionError: If any saved curvature estimate is not finite.
+        AssertionError: If any saved curvature estimate or relative residual is not
+            finite.
         AssertionError: If any saved curvature estimate is negative.
         AssertionError: If the saved results do not all have the same shape.
+        AssertionError: If `min_prob_frac` is not in [0, 1).
+        AssertionError: If `eps` is not finite and positive or not representable in
+            the curvature dtype.
     """
     assert os.path.isdir(warmup_dir), f"{warmup_dir} is not a directory"
     vals_paths = [
@@ -275,9 +279,9 @@ def calc_s_dE_dw_at_theta(
         PyTree[Float[Array, "..."]]: Gradient PyTree with the same structure as
         `enc_params`.
     """
-    # Use jax.vjp instead of jax.jvp since we want the gradient of the encoder
-    # w.r.t. the weights (n_theta, n_params) at theta_idx (1, n_params). Because dim_out << dim_in,
-    # VJP is significantly more efficient than JVP.
+    # Use jax.vjp instead of jax.jvp since the encoder maps many weights to few
+    # theta outputs, and pulling a single cotangent back through it is much cheaper
+    # than pushing a tangent forward for every weight.
     theta, vjp_fn = jax.vjp(lambda p: enc_fn(p, x_target), enc_params)
 
     # Sensitivity must be computed inside the HVP each time since it depends on enc_params.
@@ -569,9 +573,9 @@ def warmup_lc_hvp(
         n_iter (int, optional): Maximum number of power iteration steps.
             Defaults to 20.
         tol (float, optional): Stops each power iteration early once its relative
-            residual drops below `tol`. 0.0 always runs `n_iter` steps. Early
-            stopping saves no time with `vmap_theta=True`, since the vmapped loop
-            runs until every theta has stopped.
+            residual drops below `tol`. 0.0 always runs `n_iter` steps. With
+            `vmap_theta=True`, the vmapped loop runs until every theta has stopped,
+            so it only stops early if all of them converge before `n_iter` steps.
             Defaults to 0.01.
         min_prob_frac (float, optional): Fraction of the probability mass that is
             distributed uniformly over all paths, in [0, 1).
@@ -602,12 +606,13 @@ def warmup_lc_hvp(
         AssertionError: If `enc_params` contains no nonempty arrays, or any of its
             leaves are not finite float32 or float64 arrays.
         AssertionError: If `xs` is not a nonempty finite float32 or float64 array of
-            shape `(n_batches, batch, channels, samples)`.
+            shape `(n_batches, batch, channels, samples)` with `loss.shape` samples.
         AssertionError: If `enc_kwargs` or `dec_kwargs` has a leaf without a leading
             `n_batches` axis.
         AssertionError: If `enc_fn` or `dec_fn` return invalid shapes, dtypes,
             or non-finite values, or are not deterministic.
-        AssertionError: If any curvature estimate is not finite.
+        AssertionError: If any curvature estimate or relative residual is not
+            finite.
     """
     assert (
         isinstance(n_iter, Integral) and not isinstance(n_iter, bool) and n_iter > 0
@@ -647,7 +652,10 @@ def warmup_lc_hvp(
     xs = jnp.asarray(xs)
     assert (
         xs.ndim == 4 and 0 not in xs.shape and xs.shape[-1] == loss.shape
-    ), "xs must have nonempty (n_batches, batch, channels, samples) shape"
+    ), (
+        f"xs must have nonempty (n_batches, batch, channels, samples) shape with "
+        f"{loss.shape} samples"
+    )
     assert xs.dtype in (jnp.float32, jnp.float64), "xs must use float32 or float64"
     assert np.isfinite(np.asarray(xs)).all(), "xs must be finite"
 
