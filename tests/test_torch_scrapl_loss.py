@@ -1,4 +1,5 @@
-import shutil
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -97,7 +98,7 @@ def test_scrapl_loss() -> None:
     print("Passed test_scrapl_loss()")
 
 
-def test_scrapl_loss_warmup() -> None:
+def test_scrapl_loss_warmup(tmp_path: Path) -> None:
     import torch as tr
     from torch import nn
     from scrapl import SCRAPLLoss
@@ -166,11 +167,13 @@ def test_scrapl_loss_warmup() -> None:
 
     # Run the warmup. This can be parallelized across paths by specifying different
     # `start_path_idx` and `end_path_idx` subsets on multiple devices.
+    warmup_dir = str(tmp_path / "scrapl_warmup")
     scrapl_loss.warmup_lc_hvp(
         theta_fn=theta_fn,
         synth_fn=synth_fn,
         theta_fn_kwargs=theta_fn_kwargs,
         params=params,
+        save_dir=warmup_dir,
     )
     # We see that after warmup, the path sampling probabilities are no longer uniform
     print(
@@ -186,14 +189,11 @@ def test_scrapl_loss_warmup() -> None:
 
     # If warmup was conducted in parallel across multiple devices, the path sampling
     # probabilities can be loaded from a directory
-    scrapl_loss.load_probs_from_warmup_dir(warmup_dir="scrapl_warmup")
+    scrapl_loss.load_probs_from_warmup_dir(warmup_dir=warmup_dir)
     print(
         f"[min, max] path sampling probabilities: "
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
     )
-
-    # Remove the warmup directory after loading the probabilities
-    shutil.rmtree("scrapl_warmup")
 
     # scrapl.warmup_lc_hess_multibatch(
     #     theta_fn=theta_fn,
@@ -224,4 +224,5 @@ def test_scrapl_loss_warmup() -> None:
 
 if __name__ == "__main__":
     test_scrapl_loss()
-    test_scrapl_loss_warmup()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        test_scrapl_loss_warmup(Path(tmp_dir))
