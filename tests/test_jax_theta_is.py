@@ -16,7 +16,7 @@ try:
         theta_importance_probs,
         warmup_lc_hvp,
     )
-    from tests.test_jax_optim import setup_toy_models_and_data
+    from tests._toy_models import setup_toy_models_and_data
 except ModuleNotFoundError as e:
     pytest.skip(str(e), allow_module_level=True)
 
