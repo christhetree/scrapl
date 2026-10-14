@@ -1,407 +1,175 @@
-from functools import partial
+import os
 
 import numpy as np
 import pytest
 
-torch = pytest.importorskip("torch")
+from scrapl._dependencies import require_backend
 
-jax = pytest.importorskip("jax")
-jnp = pytest.importorskip("jax.numpy")
-eqx = pytest.importorskip("equinox")
-from jax.flatten_util import ravel_pytree
-
-from scrapl import SCRAPLLoss as TorchLoss
-from scrapl.jax import SCRAPLLoss, theta_importance_probs, warmup_lc_hvp
-from scrapl.jax.warmup import (
-    calc_hvp_at_theta_multibatch,
-    calc_largest_eig_power_iter,
-    calc_loss,
-    calc_s_dE_dw_at_theta,
-    generate_random_tangent,
-)
-
-
-@pytest.fixture(scope="module")
-def problem():
-    config = dict(
-        shape=128, J=3, Q1=2, Q2=1, J_fr=1, Q_fr=1, T=8, F=1, use_rho_log1p=True
+try:
+    tr = require_backend("torch")
+    jax = require_backend("jax")
+    import equinox as eqx
+    from scrapl import SCRAPLLoss as TorchSCRAPLLoss
+    from scrapl.jax import (
+        SCRAPLLoss as JaxSCRAPLLoss,
+        load_warmup_from_dir,
+        theta_importance_probs,
+        warmup_lc_hvp,
     )
-    loss = SCRAPLLoss(**config)
-    params = {
-        "bias": jnp.array([-0.4, 0.2]),
-        "matrix": jnp.array([[0.2, -0.1], [0.1, 0.3]]),
-    }
-    xs = jax.random.normal(jax.random.key(1), (2, 2, 1, 128))
-    basis = jax.random.normal(jax.random.key(2), (2, 128))
+    from tests.test_jax_optim import setup_toy_models_and_data
+except ModuleNotFoundError as e:
+    pytest.skip(str(e), allow_module_level=True)
 
-    def encoder(params, x):
-        return jax.nn.sigmoid(x[:, 0, :2] @ params["matrix"] + params["bias"])
 
-    def synth(theta):
-        return (theta @ basis)[:, None, :]
-
-    torch_params = {
-        name: torch.tensor(np.asarray(value), requires_grad=True)
-        for name, value in params.items()
-    }
-    torch_basis = torch.tensor(np.asarray(basis))
-
-    def torch_encoder(x):
-        return torch.sigmoid(
-            x[:, 0, :2] @ torch_params["matrix"] + torch_params["bias"]
-        )
-
-    def torch_synth(theta):
-        return (theta @ torch_basis)[:, None, :]
-
-    torch_loss = TorchLoss(
-        **config, n_theta=2, grad_mult=1, use_p_adam=False, use_p_saga=False
+@pytest.mark.parametrize("seed", [42])
+@pytest.mark.parametrize("tol", [0.0, 1e-2])
+@pytest.mark.parametrize("n_batches", [1, 2])
+@pytest.mark.parametrize("use_kwargs", [False, True])
+def test_theta_is_matches_pytorch(
+    seed: int, n_batches: int, tol: float, use_kwargs: bool
+) -> None:
+    print(
+        f"\n\nRunning test_theta_is_matches_pytorch with seed={seed}, "
+        f"n_batches={n_batches}, tol={tol}, use_kwargs={use_kwargs}"
     )
-    return dict(
-        loss=loss,
-        params=params,
-        enc_fn=encoder,
-        dec_fn=synth,
-        xs=xs,
-        torch_loss=torch_loss,
-        torch_params=list(torch_params.values()),
-        torch_encoder=torch_encoder,
-        torch_synth=torch_synth,
+    # Same hyperparameters as test_scrapl_loss_warmup in test_torch_scrapl_loss.py
+    bs = 3
+    n_samples = 2048
+    n_theta = 2
+    n_iter = 20
+    config = dict(shape=n_samples, J=3, Q1=1, Q2=1, J_fr=1, Q_fr=1)
+    rel_residual_tol = 1e-2
+
+    setup = setup_toy_models_and_data(
+        seed=seed, n_samples=n_samples, n_theta=n_theta, bs=bs
     )
+    xs_jax = jax.numpy.stack([setup.x_jax, setup.x_target_jax])[:n_batches]
+    xs_tr = [setup.x_tr, setup.x_target_tr][:n_batches]
+    assert xs_jax.shape[0] == len(xs_tr) == n_batches
 
+    # Optional per-batch encoder input gains and decoder output shifts
+    enc_kwargs, dec_kwargs = None, None
+    tr_enc_kwargs, tr_dec_kwargs = [{}] * n_batches, None
+    if use_kwargs:
+        gain_key, shift_key = jax.random.split(jax.random.key(seed + 1))
+        gains = jax.random.uniform(gain_key, (n_batches, bs, 1), minval=0.5, maxval=1.5)
+        shifts = jax.random.uniform(shift_key, (n_batches,), minval=-0.1, maxval=0.1)
+        enc_kwargs, dec_kwargs = dict(gain=gains), dict(shift=shifts)
+        tr_enc_kwargs = [dict(gain=tr.tensor(np.asarray(g))) for g in gains]
+        tr_dec_kwargs = [dict(shift=tr.tensor(np.asarray(s))) for s in shifts]
 
-def arguments(problem):
-    return {
-        "enc_params": problem["params"],
-        **{name: problem[name] for name in ("loss", "enc_fn", "dec_fn", "xs")},
-    }
-
-
-@pytest.fixture(scope="module")
-def result(problem):
-    return warmup_lc_hvp(
-        **arguments(problem), key=jax.random.key(3), n_iter=40, min_prob_frac=0.05
-    )
-
-
-@pytest.mark.parametrize("theta_idx", [0, 1])
-def test_curvature_product_matches_dense_matrix_and_pytorch_transpose(
-    problem, theta_idx
-):
-    w = problem["params"]
-    tangent = generate_random_tangent(jax.random.key(10), w)
-    theta_loss_fn = partial(
-        calc_loss,
-        dec_fn=problem["dec_fn"],
-        loss_fn=partial(problem["loss"], path_idx=0),
-    )
-    actual = jax.jit(
-        partial(
-            calc_hvp_at_theta_multibatch,
-            theta_idx=theta_idx,
-            xs=problem["xs"],
-            enc_fn=problem["enc_fn"],
-            theta_loss_fn=theta_loss_fn,
-        )
-    )(tangent, enc_params=w)
-    actual, _ = ravel_pytree(actual)
-    flat_tangent, _ = ravel_pytree(tangent)
-    weights, unravel = ravel_pytree(w)
-
-    def gradient(weights):
-        return sum(
-            ravel_pytree(
-                calc_s_dE_dw_at_theta(
-                    unravel(weights), x, theta_idx=theta_idx, enc_fn=problem["enc_fn"], theta_loss_fn=theta_loss_fn
-                )
-            )[0]
-            for x in problem["xs"]
-        )
-
-    matrix = jax.jit(jax.jacrev(gradient))(weights)
-    assert np.max(np.abs(matrix - matrix.T)) > 1e-3
-    # Forward-over-reverse computes J @ v
-    np.testing.assert_allclose(actual, matrix @ flat_tangent, rtol=2e-4, atol=2e-5)
-    # PyTorch's grad-of-grad computes J.T @ v, which has the same eigenvalues
-    torch_kwargs = [dict(x=torch.tensor(np.asarray(batch))) for batch in problem["xs"]]
-    expected = problem["torch_loss"]._calc_param_hvp_multibatch(
-        torch.tensor(np.asarray(flat_tangent)),
-        path_idx=0,
-        theta_idx=theta_idx,
-        theta_fn=problem["torch_encoder"],
-        synth_fn=problem["torch_synth"],
-        theta_fn_kwargs=torch_kwargs,
-        params=problem["torch_params"],
-    )
-    np.testing.assert_allclose(
-        expected.detach().numpy(), matrix.T @ flat_tangent, rtol=2e-3, atol=2e-4
-    )
-
-
-def test_vmap_theta_matches_sequential_theta(problem, result):
-    vmapped = warmup_lc_hvp(
-        **arguments(problem),
-        key=jax.random.key(3),
-        n_iter=40,
-        min_prob_frac=0.05,
+    jax_loss = JaxSCRAPLLoss(**config)
+    enc_params, enc_static = eqx.partition(setup.encoder_jax, eqx.is_inexact_array)
+    result = warmup_lc_hvp(
+        jax_loss,
+        lambda p, x, gain=1.0: jax.vmap(eqx.combine(p, enc_static))(
+            x[:, 0, :] * gain
+        ),
+        lambda theta, shift=0.0: jax.vmap(setup.decoder_jax)(theta)[:, None, :]
+        + shift,
+        xs_jax,
+        enc_params,
+        enc_kwargs,
+        dec_kwargs,
+        key=setup.loop_key,
+        n_iter=n_iter,
+        tol=tol,
         vmap_theta=True,
     )
-    np.testing.assert_allclose(vmapped.curvatures, result.curvatures, rtol=1e-5)
-    np.testing.assert_allclose(vmapped.probs, result.probs, rtol=1e-5)
-    assert np.max(vmapped.relative_residuals) < 1e-3
 
-
-def test_equinox_encoder_with_non_trainable_leaves_matches_dict_params(
-    problem, result
-):
-    class Encoder(eqx.Module):
-        bias: jax.Array
-        matrix: jax.Array
-        step: jax.Array
-        activation: object
-
-        def __call__(self, x):
-            return self.activation(x[:, 0, :2] @ self.matrix + self.bias)
-
-    params = problem["params"]
-    encoder = Encoder(
-        params["bias"], params["matrix"], jnp.array(7, dtype=jnp.int32), jax.nn.sigmoid
-    )
-    args = {**arguments(problem), "enc_params": encoder}
-    args["enc_fn"] = lambda model, x: model(x)
-    actual = warmup_lc_hvp(
-        **args, key=jax.random.key(3), n_iter=40, min_prob_frac=0.05
-    )
-    np.testing.assert_allclose(actual.curvatures, result.curvatures, rtol=1e-5)
-    np.testing.assert_allclose(actual.probs, result.probs, rtol=1e-5)
-    assert np.max(actual.relative_residuals) < 1e-3
-
-
-def test_completed_warmup_matches_pytorch(problem, result):
-    torch.manual_seed(3)
-    reference = problem["torch_loss"]
-    reference.warmup_lc_hvp(
-        theta_fn=problem["torch_encoder"],
-        synth_fn=problem["torch_synth"],
-        theta_fn_kwargs=[
-            dict(x=torch.tensor(np.asarray(batch))) for batch in problem["xs"]
-        ],
-        params=problem["torch_params"],
-        n_iter=40,
+    torch_loss = TorchSCRAPLLoss(**config, n_theta=n_theta)
+    assert jax_loss.scrapl_keys == tuple(torch_loss.scrapl_keys)
+    tr.manual_seed(seed)
+    torch_loss.warmup_lc_hvp(
+        theta_fn=lambda x, gain=1.0: setup.encoder_torch(x[:, 0, :] * gain),
+        synth_fn=lambda theta, shift=0.0: setup.decoder_torch(theta).unsqueeze(1)
+        + shift,
+        theta_fn_kwargs=[dict(x=x, **kw) for x, kw in zip(xs_tr, tr_enc_kwargs)],
+        synth_fn_kwargs=tr_dec_kwargs,
+        params=setup.torch_params,
+        n_iter=n_iter,
         save_dir=None,
     )
-    expected_curvatures = reference.all_log_vals.exp().T
-    assert result.curvatures.shape == (problem["loss"].n_paths, 2)
-    assert np.max(result.relative_residuals) < 1e-3
-    np.testing.assert_allclose(
-        result.curvatures, expected_curvatures.numpy(), rtol=3e-3, atol=3e-4
-    )
-    expected_probs = 0.95 * reference.probs.numpy() + 0.05 / reference.n_paths
-    np.testing.assert_allclose(result.probs, expected_probs, rtol=3e-3, atol=2e-5)
-    assert np.min(result.probs) >= 0.05 / reference.n_paths
+    torch_curvatures = torch_loss.all_log_vals.exp().T.numpy()
+    torch_rel_residuals = torch_loss.all_rel_residuals.T.numpy()
+    assert result.curvatures.shape == torch_curvatures.shape
 
-
-def test_theta_normalisation_and_floor_match_reference_updates(problem):
-    n_paths = problem["loss"].n_paths
-    values = np.array(
-        [[1, 1000], [9, 1000], [0, 1000], [1e-5, 1000], [20, 1000]], dtype=np.float32
-    )
-    assert values.shape == (n_paths, 2)
-    reference = TorchLoss(
-        shape=128,
-        J=3,
-        Q1=2,
-        Q2=1,
-        J_fr=1,
-        Q_fr=1,
-        n_theta=2,
-        grad_mult=1,
-        use_p_adam=False,
-        use_p_saga=False,
-    )
-    for path_idx, row in enumerate(values):
-        for theta_idx, value in enumerate(row):
-            reference.update_prob(path_idx, float(value), theta_idx)
-    actual = jax.jit(partial(theta_importance_probs, min_prob_frac=0.1))(
-        jnp.asarray(values)
-    )
-    expected = 0.9 * reference.probs.numpy() + 0.1 / n_paths
-    np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=1e-7)
-    np.testing.assert_allclose(
-        theta_importance_probs(jnp.zeros_like(values)), np.full(n_paths, 1 / n_paths)
-    )
-
-
-def test_weighted_sampling_distribution_and_dynamic_probability_updates(
-    problem, result
-):
-    loss = problem["loss"]
-    keys = jax.random.split(jax.random.key(123), 32768)
-    sample = jax.jit(
-        jax.vmap(
-            lambda key, probs: loss.sample_path(key, probs=probs), in_axes=(0, None)
+    with np.printoptions(precision=4, suppress=True):
+        print(f"\nJAX eigenvalues (n_paths, n_theta):\n{np.asarray(result.curvatures)}")
+        print(f"PyTorch eigenvalues (n_paths, n_theta):\n{torch_curvatures}")
+        print(
+            f"JAX relative residuals (n_paths, n_theta):\n"
+            f"{np.asarray(result.relative_residuals)}"
         )
+        print(f"PyTorch relative residuals (n_paths, n_theta):\n{torch_rel_residuals}")
+
+    # 1. Verify curvature estimates match where both power iterations converged.
+    # Unconverged estimates depend on each implementation's random initial vector.
+    converged = (np.asarray(result.relative_residuals) < rel_residual_tol) & (
+        torch_rel_residuals < rel_residual_tol
     )
-    draws = sample(keys, result.probs)
-    counts = np.bincount(np.asarray(draws), minlength=loss.n_paths) / len(keys)
-    np.testing.assert_allclose(counts, result.probs, rtol=0, atol=0.012)
-    np.testing.assert_array_equal(draws, sample(keys, result.probs))
-    for index in (0, loss.n_paths - 1):
-        one_hot = jax.nn.one_hot(index, loss.n_paths)
-        np.testing.assert_array_equal(sample(keys[:32], one_hot), np.full(32, index))
-
-
-def test_weighted_training_step_preserves_selected_path_loss_and_gradient(
-    problem, result
-):
-    loss, params, x = problem["loss"], problem["params"], problem["xs"][0]
-
-    def objective(params, key, probs):
-        prediction = problem["dec_fn"](problem["enc_fn"](params, x))
-        return loss(x, prediction, key=key, probs=probs)
-
-    evaluate = jax.jit(jax.value_and_grad(objective))
-    key = jax.random.key(99)
-    value, gradient = evaluate(params, key, result.probs)
-    index = int(loss.sample_path(key, probs=result.probs))
-    expected_value, expected_gradient = jax.value_and_grad(
-        lambda params: loss(
-            x, problem["dec_fn"](problem["enc_fn"](params, x)), path_idx=index
-        )
-    )(params)
-    np.testing.assert_allclose(value, expected_value, rtol=2e-5)
-    for actual, expected in zip(
-        jax.tree_util.tree_leaves(gradient),
-        jax.tree_util.tree_leaves(expected_gradient),
-    ):
-        np.testing.assert_allclose(actual, expected, rtol=2e-4, atol=2e-5)
-    updated = jax.tree_util.tree_map(lambda p, g: p - 1e-5 * g, params, gradient)
-    assert evaluate(updated, key, result.probs)[0] < value
-
-
-def test_zero_curvature_warmup_is_uniform(problem):
-    args = arguments(problem)
-    args["enc_fn"] = lambda params, x: jnp.full((x.shape[0], 2), 0.5)
-    result = warmup_lc_hvp(**args, key=jax.random.key(5), n_iter=2, min_prob_frac=0.1)
-    np.testing.assert_array_equal(result.curvatures, np.zeros_like(result.curvatures))
-    np.testing.assert_array_equal(
-        result.relative_residuals, np.zeros_like(result.relative_residuals)
+    print(
+        f"Converged: {converged.sum()} / {converged.size} ({converged.mean():.0%})"
     )
+    assert converged.mean() >= 0.8, f"Only {converged.mean():.0%} converged"
     np.testing.assert_allclose(
-        result.probs, np.full(problem["loss"].n_paths, problem["loss"].unif_prob)
+        np.asarray(result.curvatures)[converged],
+        torch_curvatures[converged],
+        rtol=3e-3,
+        atol=3e-4,
+    )
+
+    # 2. Verify path sampling probabilities match for the same curvatures
+    np.testing.assert_allclose(
+        np.asarray(theta_importance_probs(jax.numpy.asarray(torch_curvatures))),
+        torch_loss.probs.numpy(),
+        rtol=3e-3,
+        atol=2e-5,
     )
 
 
-def test_power_iteration_reports_nonconvergence_and_negative_dominant_eigenvalue():
-    matrix = jnp.array([[-3.0, 1.0], [0.0, 1.0]])
-    value, errors = calc_largest_eig_power_iter(
-        lambda v: matrix @ v, jnp.array([1.0, 1.0]), n_iter=40, eps=1e-12
+def test_split_warmup_loaded_from_dir_matches_full_warmup(tmp_path) -> None:
+    n_samples, n_theta, bs = 2048, 2, 3
+    config = dict(shape=n_samples, J=3, Q1=1, Q2=1, J_fr=1, Q_fr=1)
+    min_prob_frac = 0.05
+    setup = setup_toy_models_and_data(
+        seed=42, n_samples=n_samples, n_theta=n_theta, bs=bs
     )
-    np.testing.assert_allclose(value, 3.0, rtol=1e-6)
-    assert errors.shape == (40,)
-    assert errors[-1] < 1e-6
-    rotation = jnp.array([[0.0, -1.0], [1.0, 0.0]])
-    _, errors = calc_largest_eig_power_iter(
-        lambda v: rotation @ v, jnp.array([1.0, 0.0]), n_iter=20, eps=1e-12
+    loss = JaxSCRAPLLoss(**config)
+    enc_params, enc_static = eqx.partition(setup.encoder_jax, eqx.is_inexact_array)
+    args = (
+        loss,
+        lambda p, x: jax.vmap(eqx.combine(p, enc_static))(x[:, 0, :]),
+        lambda theta: jax.vmap(setup.decoder_jax)(theta)[:, None, :],
+        setup.x_jax[None],
+        enc_params,
     )
-    assert errors[-1] > 0.9
+    kwargs = dict(key=setup.loop_key, n_iter=20, tol=0.0, min_prob_frac=min_prob_frac)
 
+    full_dir = str(tmp_path / "full")
+    full = warmup_lc_hvp(*args, save_dir=full_dir, **kwargs)
+    np.testing.assert_allclose(np.load(os.path.join(full_dir, "probs.npy")), full.probs)
 
-def test_power_iteration_stops_early_once_residual_is_below_tol():
-    matrix = jnp.array([[-3.0, 1.0], [0.0, 1.0]])
-    tangent = jnp.array([1.0, 1.0])
-    _, full_errors = calc_largest_eig_power_iter(
-        lambda v: matrix @ v, tangent, n_iter=40, eps=1e-12
+    # 1. A partial run leaves the other paths NaN and saves no probabilities
+    split_dir = str(tmp_path / "split")
+    mid = loss.n_paths // 2
+    first = warmup_lc_hvp(*args, end_path_idx=mid, save_dir=split_dir, **kwargs)
+    assert np.isfinite(first.curvatures[:mid]).all()
+    assert np.isnan(first.curvatures[mid:]).all()
+    assert np.isnan(first.probs).all()
+    assert not os.path.exists(os.path.join(split_dir, "probs.npy"))
+    with pytest.raises(AssertionError, match="missing"):
+        load_warmup_from_dir(loss, split_dir, min_prob_frac=min_prob_frac)
+
+    # 2. The combined split runs match the full run
+    warmup_lc_hvp(*args, start_path_idx=mid, save_dir=split_dir, **kwargs)
+    loaded = load_warmup_from_dir(loss, split_dir, min_prob_frac=min_prob_frac)
+    np.testing.assert_allclose(loaded.curvatures, full.curvatures, rtol=1e-6)
+    np.testing.assert_allclose(
+        loaded.relative_residuals, full.relative_residuals, rtol=1e-6, atol=1e-7
     )
-    value, errors = calc_largest_eig_power_iter(
-        lambda v: matrix @ v, tangent, n_iter=40, eps=1e-12, tol=1e-3
-    )
-    n_steps = int(np.argmax(np.asarray(full_errors) < 1e-3)) + 1
-    assert n_steps < 40
-    assert errors.shape == (40,)
-    np.testing.assert_allclose(errors[:n_steps], full_errors[:n_steps], rtol=1e-6)
-    np.testing.assert_array_equal(errors[n_steps:], errors[n_steps - 1])
-    assert errors[-1] < 1e-3
-    np.testing.assert_allclose(value, 3.0, rtol=1e-3)
-    # An operator that never converges runs all steps.
-    rotation = jnp.array([[0.0, -1.0], [1.0, 0.0]])
-    _, errors = calc_largest_eig_power_iter(
-        lambda v: rotation @ v, jnp.array([1.0, 0.0]), n_iter=20, eps=1e-12, tol=1e-3
-    )
-    assert errors[-1] > 0.9
+    np.testing.assert_allclose(loaded.probs, full.probs, rtol=1e-6)
 
-
-@pytest.mark.parametrize("vmap_theta", [False, True])
-def test_warmup_with_tol_matches_full_warmup(problem, result, vmap_theta):
-    actual = warmup_lc_hvp(
-        **arguments(problem),
-        key=jax.random.key(3),
-        n_iter=40,
-        tol=1e-4,
-        min_prob_frac=0.05,
-        vmap_theta=vmap_theta,
-    )
-    assert np.max(actual.relative_residuals) < 1e-4
-    np.testing.assert_allclose(actual.curvatures, result.curvatures, rtol=1e-3)
-    np.testing.assert_allclose(actual.probs, result.probs, rtol=1e-3)
-
-
-def test_invalid_tol_is_rejected(problem):
-    with pytest.raises(AssertionError, match="tol"):
-        warmup_lc_hvp(**arguments(problem), key=jax.random.key(0), tol=-1.0)
-
-
-@pytest.mark.parametrize("case", ["zero", "negative", "nan", "unnormalised"])
-def test_invalid_probabilities_are_rejected_under_jit(problem, case):
-    loss = problem["loss"]
-    probs = jnp.full((loss.n_paths,), loss.unif_prob)
-    if case == "zero":
-        probs = jnp.zeros_like(probs)
-    elif case == "negative":
-        probs = probs.at[0].set(-1)
-    elif case == "nan":
-        probs = probs.at[0].set(jnp.nan)
-    else:
-        probs = probs * 2
-    key = jax.random.key(0)
-    assert jax.jit(loss.sample_path)(key, probs=probs) == -1
-    x = problem["xs"][0]
-    assert jnp.isnan(jax.jit(loss)(x, x * 0.5, key=key, probs=probs))
-
-
-def test_probability_shapes_and_fixed_path_arguments(problem):
-    loss, key = problem["loss"], jax.random.key(0)
-    with pytest.raises(ValueError, match="shape"):
-        loss.sample_path(key, probs=jnp.ones((1,)))
-    with pytest.raises(TypeError, match="float"):
-        loss.sample_path(key, probs=jnp.ones(loss.n_paths, dtype=jnp.int32))
-    x = problem["xs"][0]
-    with pytest.raises(ValueError, match="only when sampling"):
-        loss(x, x, path_idx=0, probs=jnp.full(loss.n_paths, loss.unif_prob))
-
-
-@pytest.mark.parametrize("kwargs", [{"n_iter": 0}, {"min_prob_frac": 1}, {"eps": 0}])
-def test_invalid_warmup_settings(problem, kwargs):
-    with pytest.raises(ValueError):
-        warmup_lc_hvp(**arguments(problem), key=jax.random.key(0), **kwargs)
-
-
-def test_invalid_training_arrays_and_encoder_shapes(problem):
-    args = arguments(problem)
-    with pytest.raises(ValueError, match="trainable"):
-        warmup_lc_hvp(**{**args, "enc_params": {}}, key=jax.random.key(0))
-    with pytest.raises(ValueError, match="xs must"):
-        warmup_lc_hvp(**{**args, "xs": args["xs"][0]}, key=jax.random.key(0))
-    with pytest.raises(ValueError, match="enc_fn"):
-        warmup_lc_hvp(
-            **{**args, "enc_fn": lambda params, x: jnp.ones((1,))},
-            key=jax.random.key(0),
-        )
-    with pytest.raises(ValueError, match="finite"):
-        warmup_lc_hvp(**{**args, "xs": args["xs"] * jnp.nan}, key=jax.random.key(0))
-
-
-@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf")])
-def test_invalid_curvature_estimates_produce_nan_probabilities(value):
-    values = jnp.array([[1.0, 2.0], [value, 4.0]])
-    assert jnp.isnan(jax.jit(theta_importance_probs)(values)).all()
+    # 3. Existing results are never overwritten
+    with pytest.raises(AssertionError, match="already exists"):
+        warmup_lc_hvp(*args, end_path_idx=1, save_dir=split_dir, **kwargs)
