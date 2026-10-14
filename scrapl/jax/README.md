@@ -219,7 +219,7 @@ print(
 ```
 
 > [!NOTE]
-> In PyTorch, multi-process path distribution files (`vals_{path_idx}.pt`) are saved and loaded from disk via `load_probs_from_warmup_dir`. In JAX, `warmup_lc_hvp` compiles and computes the full path distribution directly, returning `warmup.probs` as an array which can be passed to `loss_fn(..., probs=warmup.probs)` or saved/loaded with `jnp.save` / `jnp.load`.
+> `warmup_lc_hvp` returns `warmup.probs` as an array which can be passed to `loss_fn(..., probs=warmup.probs)`. As in PyTorch, warmup can be parallelized by giving each process a disjoint [`start_path_idx`, `end_path_idx`) range, the same `key`, and a shared `save_dir`, where per-path results are saved as `vals_{path_idx}.npz`. Once every range has finished, `load_warmup_from_dir(loss_fn, save_dir, min_prob_frac=...)` combines them into a `ThetaISResult` identical to a single full run.
 
 ---
 
@@ -351,6 +351,15 @@ params, key, value = step(params, xs[0], jax.random.key(4), warmup.probs)
 your training/checkpoint state and pass its probabilities explicitly. To log a
 weighted path, use `loss_fn.sample_path(key, probs=warmup.probs)` and then evaluate
 that fixed index. Passing `probs` together with `path_idx` raises `ValueError`.
+
+Arguments that are the same for every batch should be bound into `encoder` or
+`synthesiser` with a closure or `functools.partial`. Arguments that change per
+batch, such as conditioning signals, are passed as `enc_kwargs` and `dec_kwargs`:
+dicts of arrays stacked along a leading `n_batches` axis, which are sliced per batch
+and called as `encoder(params, x, **enc_kwargs)` and
+`synthesiser(theta, **dec_kwargs)`. They mirror `theta_fn_kwargs` and
+`synth_fn_kwargs` in PyTorch; a list of per-batch dicts can be stacked with
+`jax.tree.map(lambda *a: jnp.stack(a), *kwargs_list)`.
 
 For curvature estimates `c[path, theta]`, the completed-warmup distribution is:
 
