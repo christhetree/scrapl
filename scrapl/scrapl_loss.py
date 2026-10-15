@@ -88,7 +88,7 @@ class SCRAPLLoss(nn.Module):
             Q_fr (int): Wavelets per octave in the JTFS (2nd order frequential filters)
             T (str | int | None): Temporal averaging size in samples of the
                 JTFS. If 'global', averages over the entire signal. If 'None', averages
-                over J**2 samples.
+                over 2**J samples.
                 Defaults to None.
             F (str | int | None): Frequential averaging size in frequency
                 bins of the JTFS. If 'global', averages over all bins. If 'None',

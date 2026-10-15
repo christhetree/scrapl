@@ -1,4 +1,5 @@
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -13,26 +14,32 @@ except ModuleNotFoundError:
 
 def test_scrapl_loss() -> None:
     # Import SCRAPLLoss from the scrapl Python package
-    from scrapl import SCRAPLLoss
+    from scrapl.torch import SCRAPLLoss
 
     # Initialize SCRAPLLoss with the minimum required arguments
     scrapl_loss = SCRAPLLoss(
         shape=48000,  # Length of x and x_target in samples
-        J=12,  # Number of octaves (1st order temporal filters)
-        Q1=8,  # Filters per octave (1st order temporal filters)
-        Q2=2,  # Filters per octave (2nd order temporal filters)
+        J=12,  # Number of octaves (1st and 2nd order temporal filters)
+        Q1=8,  # Wavelets per octave (1st order temporal filters)
+        Q2=2,  # Wavelets per octave (2nd order temporal filters)
         J_fr=3,  # Number of octaves (2nd order frequential filters)
-        Q_fr=2,  # Filters per octave (2nd order frequential filters)
+        Q_fr=2,  # Wavelets per octave (2nd order frequential filters)
     )
 
-    # Import torch and make x and x_target
     import torch as tr
 
-    x = tr.rand((4, 1, 48000))  # Batch of 4 mono audio samples
-    x_target = tr.rand((4, 1, 48000))  # Batch of 4 mono audio samples
-
+    # Create two random tensors of shape (batch_size, num_channels, signal_length)
+    # (x requires grad here to stand in for the output of a model being trained)
+    x = tr.randn(4, 1, 48000, requires_grad=True)  # Example input tensor
+    x_target = tr.randn(4, 1, 48000)  # Example target tensor
+    # Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
+    # the loss value will be different each time `scrapl_loss()` is called.
     loss = scrapl_loss(x, x_target)
-    print(f"SCRAPLLoss: {loss.item()}")
+    # backward() is needed to update path_counts (and the P-Adam / P-SAGA state),
+    # since they are only updated in the backward pass, not in the forward pass
+    loss.backward()
+    print(f"SCRAPL loss: {loss.item()}")
+    first_path_idx = scrapl_loss.last_sampled_path_idx
 
     print(f"Number of scattering paths: {scrapl_loss.n_paths}")
     print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
@@ -43,17 +50,27 @@ def test_scrapl_loss() -> None:
 
     # Calculate the loss for a specific path index
     loss = scrapl_loss(x, x_target, path_idx=8)
-    print(f"Most recently sampled path index (specific): "
-          f"{scrapl_loss.last_sampled_path_idx}")
+    # backward() is needed for this path to be counted in path_counts
+    loss.backward()
+    print(
+        f"Most recently sampled path index (specific): "
+        f"{scrapl_loss.last_sampled_path_idx}"
+    )
+    assert scrapl_loss.last_sampled_path_idx == 8
 
     # Calculate the loss with a random seed for deterministic path sampling
     # (this will sample the same path index every time)
     loss = scrapl_loss(x, x_target, seed=42)
+    # backward() is needed for this path to be counted in path_counts
+    loss.backward()
     print(
         f"Most recently sampled path index (random seed): "
         f"{scrapl_loss.last_sampled_path_idx}"
     )
     print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
+    seed_path_idx = scrapl_loss.last_sampled_path_idx
+    expected_counts = Counter([first_path_idx, 8, seed_path_idx])
+    assert dict(scrapl_loss.path_counts) == expected_counts
 
     # Get the state dictionary of the SCRAPLLoss instance
     state_dict = scrapl_loss.state_dict()
@@ -61,10 +78,12 @@ def test_scrapl_loss() -> None:
     # Clear all state of the SCRAPLLoss instance
     scrapl_loss.clear()
     print(f"Path sampling statistics (cleared): {scrapl_loss.path_counts}")
+    assert not scrapl_loss.path_counts
 
     # Load a state dictionary into the SCRAPLLoss instance
     scrapl_loss.load_state_dict(state_dict)
     print(f"Path sampling statistics (loaded): {scrapl_loss.path_counts}")
+    assert dict(scrapl_loss.path_counts) == expected_counts
 
     from torch import nn
 
@@ -227,5 +246,3 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
 
 if __name__ == "__main__":
     test_scrapl_loss()
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        test_scrapl_loss_warmup(Path(tmp_dir))
