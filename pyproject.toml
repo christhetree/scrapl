@@ -85,8 +85,9 @@ module-name = "scrapl"
 module-root = "."
 
 [tool.uv]
-# Tells uv's resolver to target Python 3.10 for the local lockfile
-python-preference = "only-managed" # optional: strictly use uv-managed Pythons
+# Only use uv-managed Python installs, never system ones. The lockfile's supported
+# Python range comes from `requires-python`; the dev interpreter from `.python-version`.
+python-preference = "only-managed"
 
 # Local workspace members (e.g. Git submodules included in development)
 [tool.uv.workspace]
