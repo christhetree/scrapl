@@ -43,11 +43,11 @@ JTFS-based sound matching is evaluated only once._
 ## Table of Contents
 
 - [Installation](#installation)
-- [Examples (PyTorch)](#examples)
+- [Examples (PyTorch)](#examples-pytorch)
 - [Hyperparameters](#hyperparameters)
 - [Best Practices](#best-practices)
 - [Algorithm](#algorithm)
-- [Known Issues (PyTorch)](#known-issues)
+- [Known Issues (PyTorch)](#known-issues-pytorch)
 - [Citation](#citation)
 
 
@@ -174,6 +174,8 @@ x_target = tr.randn(4, 1, 48000) # Example target tensor
 # Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
 # the loss value will be different each time `scrapl_loss()` is called.
 loss = scrapl_loss(x, x_target)
+# backward() is needed to update path_counts (and the P-Adam / P-SAGA state),
+# since they are only updated in the backward pass, not in the forward pass
 loss.backward()
 print(f"SCRAPL loss: {loss.item()}")
 ```
@@ -189,12 +191,14 @@ print(f"Most recently sampled path index (prev. example): {scrapl_loss.last_samp
 
 # Calculate the loss for a specific path index
 loss = scrapl_loss(x, x_target, path_idx=8)
+# backward() is needed for this path to be counted in path_counts
 loss.backward()
 print(f"Most recently sampled path index (specific): {scrapl_loss.last_sampled_path_idx}")
 
 # Calculate the loss with a random seed for deterministic path sampling
 # (this will sample the same path index every time)
 loss = scrapl_loss(x, x_target, seed=42)
+# backward() is needed for this path to be counted in path_counts
 loss.backward()
 print(f"Most recently sampled path index (random seed): {scrapl_loss.last_sampled_path_idx}")
 print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
