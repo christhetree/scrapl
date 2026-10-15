@@ -14,17 +14,33 @@ log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 
+class PAdamState(NamedTuple):
+    """Completed update count, path timestamps, and per-path moment PyTrees."""
+
+    scrapl_t: Int[Array, ""]
+    prev_t_s: Int[Array, "n_paths"]
+    prev_m_s: PyTree[Float[Array, "n_paths ..."]]
+    prev_v_s: PyTree[Float[Array, "n_paths ..."]]
+
+
+class PSAGAState(NamedTuple):
+    """Path visit counts and the most recent input gradient for every path."""
+
+    path_counts: Int[Array, "n_paths"]
+    prev_path_grads: PyTree[Float[Array, "n_paths ..."]]
+
+
 def scale_by_gradient_multiplier(
     grad_mult: float = 1.0,
 ) -> optax.GradientTransformationExtraArgs:
     """Scales gradients by a constant multiplier factor.
 
-    A scalar multiplier applied to gradients to prevent JTFS precision errors
-    when squaring gradient values in commonly used optimizers like Adam. See
-    https://hal.science/hal-05124224v1 for more information.
-
     Args:
-        grad_mult (float, optional): Gradient multiplier factor.
+        grad_mult (float, optional): A scalar multiplier applied to gradients to
+            prevent JTFS precision errors when squaring gradient values in commonly
+            used optimizers like Adam. See https://hal.science/hal-05124224v1 for
+            more information. When `use_rho_log1p` is True, `grad_mult` is no
+            longer necessary and can be set to a value of 1.
             Defaults to 1.0.
 
     Returns:
@@ -72,14 +88,20 @@ def adam_grad_norm_cont(
         t (Float[Array, ""] | float): Normalized current time-step (curr_t / n_paths).
         prev_t (Float[Array, ""] | float): Normalized previous time-step
             (prev_t / n_paths).
-        b1 (float, optional): β1 Adam hyperparameter. Defaults to 0.9.
-        b2 (float, optional): β2 Adam hyperparameter. Defaults to 0.999.
-        eps (float, optional): Small epsilon for numerical stability. Defaults to 1e-8.
+        b1 (float, optional): β1 Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
+            Defaults to 0.9.
+        b2 (float, optional): β2 Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
+            Defaults to 0.999.
+        eps (float, optional): ε Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
+            Defaults to 1e-8.
 
     Returns:
         tuple[Float[Array, "*shape"], Float[Array, "*shape"], Float[Array, "*shape"]]:
-        (grad_hat, m, v) where grad_hat is normalized gradient, and m, v are updated
-        moments, all with the same shape as `grad`.
+        (grad_hat, m, v) where `grad_hat` is the normalized gradient and `m`, `v` are
+        the updated moments, all with the same shape as `grad`.
     """
     delta_t = t - prev_t
     # 1 - b**x via expm1 to avoid float32 cancellation when b**x is close to 1
@@ -95,15 +117,6 @@ def adam_grad_norm_cont(
     return grad_hat, m, v
 
 
-class PAdamState(NamedTuple):
-    """Completed update count, path timestamps, and per-path moment PyTrees."""
-
-    scrapl_t: Int[Array, ""]
-    prev_t_s: Int[Array, "n_paths"]
-    prev_m_s: PyTree[Float[Array, "n_paths ..."]]
-    prev_v_s: PyTree[Float[Array, "n_paths ..."]]
-
-
 def p_adam(
     n_paths: int,
     b1: float = 0.9,
@@ -116,17 +129,20 @@ def p_adam(
     to normalize gradients across stochastic path choices.
 
     Args:
-        n_paths (int): Total number of scattering paths.
-        b1 (float, optional): β1 Adam hyperparameter in [0, 1).
+        n_paths (int): Total number of scattering paths (i.e. `SCRAPLLoss.n_paths`).
+        b1 (float, optional): β1 Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
             Defaults to 0.9.
-        b2 (float, optional): β2 Adam hyperparameter in [0, 1).
+        b2 (float, optional): β2 Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
             Defaults to 0.999.
-        eps (float, optional): Small epsilon for numerical stability.
+        eps (float, optional): ε Adam hyperparameter for the internal
+            𝒫-Adam algorithm.
             Defaults to 1e-8.
 
     Returns:
-        optax.GradientTransformationExtraArgs: An Optax gradient transformation with
-        custom path_idx argument support.
+        optax.GradientTransformationExtraArgs: An Optax gradient transformation
+        accepting `path_idx` in its `update` function.
 
     Raises:
         AssertionError: If `n_paths` is not a positive integer.
@@ -245,13 +261,6 @@ def p_adam(
     return optax.GradientTransformationExtraArgs(init=init_fn, update=update_fn)
 
 
-class PSAGAState(NamedTuple):
-    """Path visit counts and the most recent input gradient for every path."""
-
-    path_counts: Int[Array, "n_paths"]
-    prev_path_grads: PyTree[Float[Array, "n_paths ..."]]
-
-
 def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
     """Pathwise SAGA (𝒫-SAGA) gradient correction transformation.
 
@@ -259,11 +268,11 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
     gradient corrections.
 
     Args:
-        n_paths (int): Total number of scattering paths.
+        n_paths (int): Total number of scattering paths (i.e. `SCRAPLLoss.n_paths`).
 
     Returns:
-        optax.GradientTransformationExtraArgs: An Optax gradient transformation with
-        custom path_idx argument support.
+        optax.GradientTransformationExtraArgs: An Optax gradient transformation
+        accepting `path_idx` in its `update` function.
 
     Raises:
         AssertionError: If `n_paths` is not a positive integer.
@@ -373,29 +382,34 @@ def scrapl_optimizer(
 
     For documentation, examples, hyperparameters, and best practices, please visit:
     https://github.com/christhetree/scrapl
-    See https://hal.science/hal-05124224v1 for more information on the SCRAPL algorithm.
 
     Args:
         learning_rate (float, optional): Base learning rate for parameter updates.
             Defaults to 1e-3.
         weight_decay (float, optional): L2 weight decay factor added to updates
-            before learning rate scaling. Defaults to 0.01.
-        n_paths (int): Total number of scattering paths.
+            before learning rate scaling.
+            Defaults to 0.01.
+        n_paths (int): Total number of scattering paths (i.e. `SCRAPLLoss.n_paths`).
         grad_mult (float, optional): A scalar multiplier applied to gradients to
             prevent JTFS precision errors when squaring gradient values in commonly
             used optimizers like Adam. See https://hal.science/hal-05124224v1 for
-            more information. If 1.0, gradient multiplier scaling is omitted.
+            more information. When `use_rho_log1p` is True, `grad_mult` is no
+            longer necessary and can be set to a value of 1. If `grad_mult` is 1,
+            gradient multiplier scaling is omitted.
             Defaults to 1e8.
         use_p_adam (bool, optional): If True, enables the 𝒫-Adam algorithm.
             Defaults to True.
         use_p_saga (bool, optional): If True, enables the 𝒫-SAGA algorithm.
             Defaults to True.
         p_adam_b1 (float, optional): β1 Adam hyperparameter for the internal 𝒫-Adam
-            algorithm in [0, 1). Defaults to 0.9.
+            algorithm.
+            Defaults to 0.9.
         p_adam_b2 (float, optional): β2 Adam hyperparameter for the internal 𝒫-Adam
-            algorithm in [0, 1). Defaults to 0.999.
+            algorithm.
+            Defaults to 0.999.
         p_adam_eps (float, optional): ε Adam hyperparameter for the internal 𝒫-Adam
-            algorithm. Defaults to 1e-8.
+            algorithm.
+            Defaults to 1e-8.
 
     Returns:
         optax.GradientTransformationExtraArgs: Chained Optax optimizer accepting

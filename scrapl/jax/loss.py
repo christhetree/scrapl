@@ -17,14 +17,7 @@ log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 
 class SCRAPLLoss(eqx.Module):
-    """Initializes a `SCRAPLLoss` module which contains an implementation of the
-    "Scattering Transform with Random Paths for Machine Learning" (SCRAPL) algorithm
-    for the joint time-frequency scattering transform (JTFS) in JAX.
-    For documentation, examples, hyperparameters, and best practices, please visit:
-    https://github.com/christhetree/scrapl
-    For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`,
-    `T`, and `F` hyperparameters, please visit:
-    https://www.kymat.io/ismir23-tutorial/intro.html
+    """SCRAPL loss for the JTFS in JAX.
 
     Configuration is frozen and registered as an Equinox PyTree module.
     """
@@ -57,21 +50,28 @@ class SCRAPLLoss(eqx.Module):
         use_rho_log1p: bool = False,
         log1p_eps: float = 1e-3,
     ) -> None:
-        """Initializes a `SCRAPLLoss` module in JAX.
+        """Initializes a `SCRAPLLoss` module which contains an implementation of the
+        "Scattering Transform with Random Paths for Machine Learning" (SCRAPL) algorithm
+        for the joint time-frequency scattering transform (JTFS) in JAX.
+        For documentation, examples, hyperparameters, and best practices, please visit:
+        https://github.com/christhetree/scrapl
+        For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`,
+        `T`, and `F` hyperparameters, please visit:
+        https://www.kymat.io/ismir23-tutorial/intro.html
 
         Args:
             shape (int): The length of the input signal (number of samples).
-            J (int): Number of octaves in the JTFS (1st and 2nd order temporal filters).
-            Q1 (int): Wavelets per octave in the JTFS (1st order temporal filters).
-            Q2 (int): Wavelets per octave in the JTFS (2nd order temporal filters).
-            J_fr (int): Number of octaves in the JTFS (2nd order frequential filters).
-            Q_fr (int): Wavelets per octave in the JTFS (2nd order frequential filters).
-            T (str | int | None, optional): Temporal averaging size in samples
-                of the JTFS. If 'global', averages over the entire signal. If None,
-                averages over 2**J samples.
+            J (int): Number of octaves in the JTFS (1st and 2nd order temporal filters)
+            Q1 (int): Wavelets per octave in the JTFS (1st order temporal filters)
+            Q2 (int): Wavelets per octave in the JTFS (2nd order temporal filters)
+            J_fr (int): Number of octaves in the JTFS (2nd order frequential filters)
+            Q_fr (int): Wavelets per octave in the JTFS (2nd order frequential filters)
+            T (str | int | None): Temporal averaging size in samples of the
+                JTFS. If 'global', averages over the entire signal. If 'None', averages
+                over 2**J samples.
                 Defaults to None.
-            F (str | int | None, optional): Frequential averaging size in frequency
-                bins of the JTFS. If 'global', averages over all bins. If None,
+            F (str | int | None): Frequential averaging size in frequency
+                bins of the JTFS. If 'global', averages over all bins. If 'None',
                 averages over 2**J_fr bins.
                 Defaults to None.
             p (float, optional): The order of the norm used for the distance calculation.

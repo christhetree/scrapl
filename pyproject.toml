@@ -103,3 +103,7 @@ fadtk = { workspace = true, editable = true }
 testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "-v -s"  # verbose output
+# Show log records live in the same format as logging.basicConfig()
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(levelname)s:%(name)s:%(message)s"

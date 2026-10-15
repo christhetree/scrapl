@@ -49,11 +49,12 @@ def theta_importance_probs(
     Args:
         curvatures (Float[Array, "n_paths n_theta"]): Curvature estimates of shape
             `(n_paths, n_theta)`.
-        min_prob_frac (float, optional): Fraction of the probability mass that is
-            distributed uniformly over all paths, in [0, 1).
+        min_prob_frac (float, optional): When using θ-IS, the minimum fraction of
+            the uniform sampling probability assigned to any path,
+            ensuring no path has zero probability of being sampled.
             Defaults to 0.0.
-        eps (float, optional): Lower bound applied to curvatures before
-            normalizing them.
+        eps (float, optional): A small value for numerical stability in probability
+            calculations.
             Defaults to 1e-12.
 
     Returns:
@@ -102,7 +103,7 @@ def load_warmup_from_dir(
     min_prob_frac: float = 0.0,
     eps: float = 1e-12,
 ) -> ThetaISResult:
-    """Loads a theta-IS warmup saved by one or more `warmup_lc_hvp` runs.
+    """Loads a θ-IS warmup saved by one or more `warmup_lc_hvp` runs.
 
     Combines the per-path results written to `warmup_dir` by runs over disjoint
     [`start_path_idx`, `end_path_idx`) ranges and recomputes the path sampling
@@ -111,11 +112,12 @@ def load_warmup_from_dir(
     Args:
         loss (SCRAPLLoss): SCRAPL loss module the warmup was run with.
         warmup_dir (str): Directory passed as `save_dir` to `warmup_lc_hvp`.
-        min_prob_frac (float, optional): Fraction of the probability mass that is
-            distributed uniformly over all paths, in [0, 1).
+        min_prob_frac (float, optional): When using θ-IS, the minimum fraction of
+            the uniform sampling probability assigned to any path,
+            ensuring no path has zero probability of being sampled.
             Defaults to 0.0.
-        eps (float, optional): Lower bound applied to curvatures before
-            normalizing them.
+        eps (float, optional): A small value for numerical stability in probability
+            calculations.
             Defaults to 1e-12.
 
     Returns:
@@ -518,7 +520,12 @@ def warmup_lc_hvp(
     eps: float = 1e-12,
     vmap_theta: bool = False,
 ) -> ThetaISResult:
-    """Estimates theta-IS curvatures and sampling probabilities for every path.
+    """Estimates θ-IS curvatures and sampling probabilities for every path.
+
+    Executes the θ-Importance Sampling (θ-IS) warmup procedure to
+    initialize a non-uniform scattering path sampling probability distribution
+    based on the local curvature of the loss landscape. For more information please
+    visit: https://github.com/christhetree/scrapl/#importance-sampling-warmup
 
     Must be called outside JIT. Each path is compiled separately and batches are
     evaluated sequentially to limit memory use. Batch curvature products are
@@ -534,11 +541,13 @@ def warmup_lc_hvp(
     per-batch dicts can be stacked with
     `jax.tree.map(lambda *a: jnp.stack(a), *kwargs_list)`.
 
-    **Parallelization:** Warmup can be split across processes or devices by
-    assigning each one a disjoint [`start_path_idx`, `end_path_idx`) range and the
-    same `key` and `save_dir`. Each path's PRNG key is derived from `key` and the
-    path index, so split runs give the same estimates as a single run. After all
-    runs finish, load the combined result with `load_warmup_from_dir`.
+    **Parallelization:** To speed up warmup, this function can be run on multiple
+    GPUs simultaneously by assigning disjoint [`start_path_idx`, `end_path_idx`)
+    ranges to each process and providing the same `key` and `save_dir`. Each path's
+    PRNG key is derived from `key` and the path index, so split runs give the same
+    estimates as a single run. After all processes finish, use
+    `load_warmup_from_dir` to load the aggregated path sampling probability
+    distribution.
 
     Args:
         loss (SCRAPLLoss): SCRAPL loss module.
@@ -560,27 +569,32 @@ def warmup_lc_hvp(
             for `dec_fn`, stacked the same way as `enc_kwargs`.
             Defaults to None.
         key (Key[Array, ""]): JAX PRNG key for the initial power iteration vectors.
-        start_path_idx (int, optional): First path index to compute.
+        start_path_idx (int, optional): The starting index of the scattering paths
+            to compute. Used for parallelizing the warmup across multiple devices.
             Defaults to 0.
-        end_path_idx (int | None, optional): Path index to stop at (exclusive). If
-            None, defaults to `loss.n_paths`.
+        end_path_idx (int | None, optional): The ending index (exclusive) of
+            the scattering paths to compute. If None, defaults to `loss.n_paths`.
             Defaults to None.
-        save_dir (str | None, optional): Directory where each path's curvatures and
-            relative residuals are saved as `vals_{path_idx}.npz`, and the final
-            probabilities as `probs.npy` when every path was computed. If None,
-            nothing is saved.
+        save_dir (str | None, optional): Directory path where intermediate
+            eigenvalues (`vals_{path_idx}.npz`) and the final path sampling
+            probability distribution (`probs.npy`) will be saved. If None, nothing
+            is saved.
             Defaults to None.
-        n_iter (int, optional): Maximum number of power iteration steps.
+        n_iter (int, optional): The maximum number of power iteration steps used to
+            approximate the largest eigenvalue of the Hessian. Higher values
+            increase precision at the cost of computation time.
             Defaults to 20.
         tol (float, optional): Stops each power iteration early once its relative
             residual drops below `tol`. 0.0 always runs `n_iter` steps. With
             `vmap_theta=True`, the vmapped loop runs until every theta has stopped,
             so it only stops early if all of them converge before `n_iter` steps.
             Defaults to 0.01.
-        min_prob_frac (float, optional): Fraction of the probability mass that is
-            distributed uniformly over all paths, in [0, 1).
+        min_prob_frac (float, optional): When using θ-IS, the minimum fraction of
+            the uniform sampling probability assigned to any path,
+            ensuring no path has zero probability of being sampled.
             Defaults to 0.0.
-        eps (float, optional): Small epsilon for numerical stability.
+        eps (float, optional): A small value for numerical stability in power
+            iteration and probability calculations.
             Defaults to 1e-12.
         vmap_theta (bool, optional): If True, evaluates theta indices in parallel,
             which is faster but multiplies peak memory by `n_theta`. Otherwise
