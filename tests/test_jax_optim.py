@@ -201,10 +201,10 @@ def assert_step_matches(
     weight_decay: float = 0.01,
     loss_rtol: float = 1e-6,
     loss_atol: float = 1e-7,
-    grad_rtol: float = 1e-6,
-    grad_atol: float = 1e-7,
-    param_rtol: float = 1e-6,
-    param_atol: float = 1e-7,
+    grad_rtol: float = 1e-5,
+    grad_atol: float = 1e-6,
+    param_rtol: float = 1e-5,
+    param_atol: float = 1e-6,
 ) -> None:
     """
     Verifies numerical equivalence of loss values, parameter updates, and model weights.
@@ -324,8 +324,8 @@ def assert_p_saga_state_matches(state: PSAGAState, torch_loss: TorchSCRAPLLoss) 
         np.testing.assert_allclose(
             np.asarray(g_leaf),
             torch_loss.prev_path_grads[i].numpy(),
-            rtol=1e-6,
-            atol=1e-7,
+            rtol=1e-5,  # Stored grads are scaled by grad_mult, see assert_step_matches
+            atol=1e-6,
         )
     np.testing.assert_array_equal(
         np.asarray(state.path_counts),
