@@ -37,18 +37,21 @@ def test_scrapl_loss() -> None:
     print(f"Number of scattering paths: {scrapl_loss.n_paths}")
     print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
     print(
-        f"Most recently sampled path index (prev. example): {scrapl_loss.curr_path_idx}"
+        f"Most recently sampled path index (prev. example): "
+        f"{scrapl_loss.last_sampled_path_idx}"
     )
 
     # Calculate the loss for a specific path index
     loss = scrapl_loss(x, x_target, path_idx=8)
-    print(f"Most recently sampled path index (specific): {scrapl_loss.curr_path_idx}")
+    print(f"Most recently sampled path index (specific): "
+          f"{scrapl_loss.last_sampled_path_idx}")
 
     # Calculate the loss with a random seed for deterministic path sampling
     # (this will sample the same path index every time)
     loss = scrapl_loss(x, x_target, seed=42)
     print(
-        f"Most recently sampled path index (random seed): {scrapl_loss.curr_path_idx}"
+        f"Most recently sampled path index (random seed): "
+        f"{scrapl_loss.last_sampled_path_idx}"
     )
     print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
 

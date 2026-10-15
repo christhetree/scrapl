@@ -234,7 +234,7 @@ class SCRAPLLightingModule(pl.LightningModule):
         if curr_t is None:
             curr_t = self.global_step
         try:
-            path_idx = self.loss_func.curr_path_idx
+            path_idx = self.loss_func.backward_path_idx
         except AttributeError:
             log.warning("save_grad_hook: path_idx not found")
             path_idx = -1
@@ -371,7 +371,7 @@ class SCRAPLLightingModule(pl.LightningModule):
             theta_s_0to1_hat.retain_grad()
             if self.use_ds_update:
                 assert isinstance(self.loss_func, SCRAPLLoss)
-                path_idx = self.loss_func.curr_path_idx
+                path_idx = self.loss_func.last_sampled_path_idx
                 theta_d_0to1_hat.register_hook(
                     functools.partial(
                         self.ds_update_hook,

@@ -7,6 +7,7 @@ require_backend("torch")
 
 import functools
 import logging
+import math
 import os
 from collections import defaultdict
 from collections.abc import Callable, Iterable
@@ -209,7 +210,8 @@ class SCRAPLLoss(nn.Module):
             f"number of SCRAPL paths = {self.n_paths}\n"
             f"unif_prob              = {self.unif_prob:.8f}\n"
         )
-        self.curr_path_idx = None
+        self.last_sampled_path_idx = None
+        self.backward_path_idx = None
         self.path_counts = defaultdict(int)
         self.rand_gen = tr.Generator(device="cpu")
         # This is only used if sample_all_paths_first is True
@@ -314,7 +316,8 @@ class SCRAPLLoss(nn.Module):
 
     def clear(self) -> None:
         # Path related setup
-        self.curr_path_idx = None
+        self.last_sampled_path_idx = None
+        self.backward_path_idx = None
         self.path_counts.clear()
         self.unsampled_paths = list(range(self.n_paths))
         # Grad related setup
@@ -395,16 +398,15 @@ class SCRAPLLoss(nn.Module):
             )
 
     def grad_hook(self, grad: T, param_idx: int) -> T:
-        # TODO: check if this works
         if not self.training:
             return grad
 
         if self.grad_mult != 1.0:
             grad *= self.grad_mult
 
-        assert self.curr_path_idx is not None
-        path_idx = self.curr_path_idx
-        curr_t = self.scrapl_t + 1
+        assert self.backward_path_idx is not None
+        path_idx = self.backward_path_idx
+        curr_t = self.scrapl_t
 
         if self.use_p_adam:
             prev_m_s = self.p_adam_m[param_idx]
@@ -507,10 +509,9 @@ class SCRAPLLoss(nn.Module):
                 log.warning(f"seed is ignored when path_idx is specified")
         dist, _, _ = self.calc_dist(x, x_target, path_idx)
 
-        self.curr_path_idx = path_idx
-        if self.training:  # TODO: check if this works
-            self.path_counts[path_idx] += 1
-            self.scrapl_t += 1
+        self.last_sampled_path_idx = path_idx
+        if self.training and dist.requires_grad:
+            dist.register_hook(functools.partial(self._on_backward, path_idx=path_idx))
             # if self.grad_mult != 1.0 or self.use_p_adam or self.use_p_saga:
             #     if not self.attached_params:
             #         log.warning(
@@ -519,6 +520,13 @@ class SCRAPLLoss(nn.Module):
             #             f"use_p_saga ({self.use_p_saga}) are enabled."
             #         )
         return dist
+
+    def _on_backward(self, grad: T, path_idx: int) -> T:
+        # Fires once per backward pass through this loss, before any param hooks
+        self.backward_path_idx = path_idx
+        self.path_counts[path_idx] += 1
+        self.scrapl_t += 1
+        return grad
 
     # Update prob methods ==============================================================
     def update_prob(self, path_idx: int, val: float | T, theta_idx: int = 0) -> None:
@@ -1088,12 +1096,15 @@ class SCRAPLLoss(nn.Module):
         eps: float = 1e-8,
     ) -> (T, T, T):
         delta_t = t - prev_t
-        eff_b1 = b1**delta_t
-        eff_b2 = b2**delta_t
-        m = eff_b1 * prev_m + (1 - eff_b1) * grad
-        v = eff_b2 * prev_v + (1 - eff_b2) * grad**2
-        m_hat = m / (1 - b1**t)
-        v_hat = v / (1 - b2**t)
+        # 1 - b**x via expm1 to avoid float32 cancellation when b**x is close to 1
+        log_b1 = math.log(b1) if b1 > 0 else -math.inf
+        log_b2 = math.log(b2) if b2 > 0 else -math.inf
+        eff_b1 = math.exp(delta_t * log_b1)
+        eff_b2 = math.exp(delta_t * log_b2)
+        m = eff_b1 * prev_m - math.expm1(delta_t * log_b1) * grad
+        v = eff_b2 * prev_v - math.expm1(delta_t * log_b2) * grad**2
+        m_hat = m / -math.expm1(t * log_b1)
+        v_hat = v / -math.expm1(t * log_b2)
         grad_hat = m_hat / (T.sqrt(v_hat) + eps)
         return grad_hat, m, v
 

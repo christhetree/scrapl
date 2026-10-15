@@ -82,12 +82,15 @@ def adam_grad_norm_cont(
         moments, all with the same shape as `grad`.
     """
     delta_t = t - prev_t
-    eff_b1 = b1**delta_t
-    eff_b2 = b2**delta_t
-    m = eff_b1 * prev_m + (1.0 - eff_b1) * grad
-    v = eff_b2 * prev_v + (1.0 - eff_b2) * (grad**2)
-    m_hat = m / (1.0 - b1**t)
-    v_hat = v / (1.0 - b2**t)
+    # 1 - b**x via expm1 to avoid float32 cancellation when b**x is close to 1
+    log_b1 = jnp.log(b1)
+    log_b2 = jnp.log(b2)
+    eff_b1 = jnp.exp(delta_t * log_b1)
+    eff_b2 = jnp.exp(delta_t * log_b2)
+    m = eff_b1 * prev_m - jnp.expm1(delta_t * log_b1) * grad
+    v = eff_b2 * prev_v - jnp.expm1(delta_t * log_b2) * (grad**2)
+    m_hat = m / -jnp.expm1(t * log_b1)
+    v_hat = v / -jnp.expm1(t * log_b2)
     grad_hat = m_hat / (jnp.sqrt(v_hat) + eps)
     return grad_hat, m, v
 
@@ -187,9 +190,8 @@ def p_adam(
         """
         assert 0 <= path_idx < n_paths, f"path_idx must be in [0, {n_paths})"
         path_idx = jnp.asarray(path_idx, dtype=jnp.int32)
-        # TODO(cm): Look into this
-        new_scrapl_t = state.scrapl_t + 1  # Incremented in forward() in Torch
-        curr_t = new_scrapl_t + 1
+        new_scrapl_t = state.scrapl_t + 1
+        curr_t = new_scrapl_t
         prev_t = state.prev_t_s[path_idx]
         t_norm = curr_t.astype(jnp.float32) / n_paths
         prev_t_norm = prev_t.astype(jnp.float32) / n_paths

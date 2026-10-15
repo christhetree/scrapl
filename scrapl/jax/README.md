@@ -83,7 +83,7 @@ print(f"Loss for specific path: {float(loss):.6f}")
 ```
 
 > [!NOTE]
-> Unlike the PyTorch version which is stateful (tracking `curr_path_idx`, `path_counts`, `state_dict`, and `clear()`), the JAX `SCRAPLLoss` is a pure, immutable Equinox module. Path sampling is explicit via `scrapl_loss.sample_path(key)` and all state lives cleanly in caller-managed PyTrees or Optax optimizer states.
+> Unlike the PyTorch version which is stateful (tracking `last_sampled_path_idx`, `path_counts`, `state_dict`, and `clear()`), the JAX `SCRAPLLoss` is a pure, immutable Equinox module. Path sampling is explicit via `scrapl_loss.sample_path(key)` and all state lives cleanly in caller-managed PyTrees or Optax optimizer states.
 
 ### Using $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA
 

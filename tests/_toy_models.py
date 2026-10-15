@@ -114,8 +114,8 @@ def setup_toy_models_and_data(
     np.testing.assert_allclose(
         np.asarray(theta_hat_jax),
         theta_hat_tr.detach().numpy(),
-        rtol=1e-5,
-        atol=1e-6,
+        rtol=1e-6,
+        atol=1e-7,
     )
 
     x_hat_jax = jax.vmap(decoder_jax)(theta_hat_jax)[:, None, :]
@@ -123,8 +123,8 @@ def setup_toy_models_and_data(
     np.testing.assert_allclose(
         np.asarray(x_hat_jax),
         x_hat_tr.detach().numpy(),
-        rtol=1e-5,
-        atol=1e-6,
+        rtol=1e-6,
+        atol=1e-7,
     )
 
     torch_params = list(encoder_torch.parameters())
