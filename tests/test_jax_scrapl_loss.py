@@ -67,7 +67,7 @@ def test_scrapl_loss(seed: int, n_paths: int) -> None:
         np.testing.assert_allclose(
             np.asarray(jax_dist),
             torch_dist.detach().numpy(),
-            rtol=2e-5,
+            rtol=1e-6,
             atol=1e-7,
         )
 
@@ -75,6 +75,6 @@ def test_scrapl_loss(seed: int, n_paths: int) -> None:
         np.testing.assert_allclose(
             np.asarray(jax_grad_x),
             torch_grad_x.detach().numpy(),
-            rtol=5e-4,
-            atol=2e-6,
+            rtol=1e-6,
+            atol=1e-7,
         )

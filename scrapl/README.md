@@ -2,6 +2,8 @@
 <h1><b>SCRAPL</b>: <b>Sc</b>attering Transform with <b>Ra</b>ndom <b>P</b>aths for Machine <b>L</b>earning</h1>
 
 [![Release](https://img.shields.io/badge/PyPI-v0.1.0-green)](https://pypi.org/project/scrapl-loss/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-supported-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![JAX](https://img.shields.io/badge/JAX-supported-5E97F6)](https://github.com/jax-ml/jax)
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
 [![Listening Samples](https://img.shields.io/badge/%F0%9F%94%8A%F0%9F%8E%B6-Listening_Samples-blue)](https://christhetree.github.io/scrapl/)
 [![License](https://img.shields.io/badge/License-MIT-blue)](https://opensource.org/license/mit)
@@ -13,7 +15,7 @@ This reduces the computational and memory costs by one to three orders of magnit
 SCRAPL also leverages specialized stochastic optimization techniques (𝒫-Adam, 𝒫-SAGA) and an architecture-informed importance sampling heuristic (θ-IS) to stabilize gradients and improve convergence.
 For more details, please see the [ICLR 2026 paper](https://openreview.net/forum?id=RuYwbd5xYa).
 
-`scrapl-loss` currently contains a PyTorch implementation of the SCRAPL algorithm for the [joint time–frequency scattering transform (JTFS)](https://www.kymat.io/ismir23-tutorial/ch1_intro/why_wavelets.html), which demodulates spectrotemporal patterns at multiple scales and rates, and has been shown to correlate with human perception ([Lostanlen et al., 2021](https://link.springer.com/article/10.1186/s13636-020-00187-z); [Tian et al., 2025](https://doi.org/10.48550/arXiv.2507.07764)).
+`scrapl-loss` contains a PyTorch and JAX implementation of the SCRAPL algorithm for the [joint time–frequency scattering transform (JTFS)](https://www.kymat.io/ismir23-tutorial/ch1_intro/why_wavelets.html), which demodulates spectrotemporal patterns at multiple scales and rates, and has been shown to correlate with human perception ([Lostanlen et al., 2021](https://link.springer.com/article/10.1186/s13636-020-00187-z); [Tian et al., 2025](https://doi.org/10.48550/arXiv.2507.07764)).
 In our experiments, we find that SCRAPL accomplishes a favorable tradeoff between goodness of fit and computational efficiency on unsupervised sound matching, i.e., a nonlinear inverse problem in which the forward operator implements an audio synthesizer.
 In the context of differentiable digital signal processing (DDSP), the state-of-the-art perceptual loss function for this task is multiscale spectral loss (MSS, [Yamamoto et al., 2020](https://doi.org/10.48550/arXiv.1910.11480); [Engel et al., 2020](https://openreview.net/forum?id=B1x1ma4tDr)). 
 However, the gradient of MSS is uninformative when input and reconstruction are misaligned or when the synthesizer controls involve spectrotemporal modulations ([Vahidi et al., 2023](https://doi.org/10.48550/arXiv.2301.10183)). 
@@ -26,9 +28,7 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
-An [experimental JAX SCRAPL loss with θ-IS warmup and path sampling](jax/README.md)
-is available in this checkout, with optional P-Adam gradient normalisation and
-P-SAGA gradient correction.
+This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -43,50 +43,97 @@ JTFS-based sound matching is evaluated only once._
 ## Table of Contents
 
 - [Installation](#installation)
-- [Examples](#examples)
+- [Examples (PyTorch)](#examples)
 - [Hyperparameters](#hyperparameters)
 - [Best Practices](#best-practices)
 - [Algorithm](#algorithm)
-- [Known Issues](#known-issues)
+- [Known Issues (PyTorch)](#known-issues)
 - [Citation](#citation)
 
 
 ## Installation
 
-Choose a backend when installing from this checkout:
+
+**1. PyTorch implementation:**
+
+```sh
+uv add 'scrapl-loss[torch]'
+```
+
+or
+
+```sh
+pip install 'scrapl-loss[torch]'
+```
+
+Then: 
+
+`from scrapl.torch import SCRAPLLoss` or `from scrapl import SCRAPLLoss`
+
+
+**2. JAX implementation:**
+
+```sh
+uv add 'scrapl-loss[jax]'
+```
+
+or
+
+```sh
+pip install 'scrapl-loss[jax]'
+```
+
+Then: 
+
+`from scrapl.jax import SCRAPLLoss`
+
+
+**3. All extras (for testing):**
+
+```sh
+uv add 'scrapl-loss[torch,jax,test]'
+```
+
+or
+
+```sh
+pip install 'scrapl-loss[torch,jax,test]'
+```
+
+To run the test suite with `uv`: 
+
+```sh
+uv run pytest
+```
+
+
+**4. From source checkout:**
 
 ```sh
 git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
-uv sync --extra torch
+uv sync --extra torch --extra jax --extra test
 ```
 
-The independent extras are:
+**Requirements:**
 
-| Extra | Framework dependencies | Loss import |
-| --- | --- | --- |
-| `[torch]` | PyTorch only | `from scrapl import SCRAPLLoss` |
-| `[jax]` | JAX only | `from scrapl.jax import SCRAPLLoss` |
-| `[torch,jax]` | Both frameworks | Either API |
-
-For example, use `uv sync --extra jax` for JAX, or
-`uv sync --extra torch --extra jax --extra test` to run the full comparison test suite.
-The selector changes currently require this checkout and have not been published.
-
-The package requires Python 3.10 or higher, NumPy and SciPy. The Torch extra
-requires `2.8.0 <= torch < 3.0.0`; the JAX extra requires `jax >= 0.4.26`.
-A bare installation now includes neither framework. Existing PyTorch users
-should select `[torch]`; the `from scrapl import SCRAPLLoss` API is preserved.
-Importing `scrapl` alone loads neither framework. Accessing a backend without its
-extra installed reports the required installation command.
+The package requires Python 3.10 or higher, NumPy and SciPy. 
+The Torch backend requires `2.8.0 <= torch < 3.0.0` and the JAX backend requires 
+`jax >= 0.5.0`, `equinox>=0.13.0`, `optax>=0.2.5`, and `jaxtyping>=0.3.0`.
+A bare installation with no extras includes neither framework, so PyTorch users
+should select `[torch]`.
+Trying to access an uninstalled backend will report the required installation command.
 
 
-## Examples
+## Examples (PyTorch)
+
+This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
+
 
 Importing and initializing `SCRAPLLoss` with the minimum required arguments:
 
 ```python
 # Import SCRAPLLoss from the scrapl Python package
-from scrapl import SCRAPLLoss
+from scrapl.torch import SCRAPLLoss
 
 # Initialize SCRAPLLoss with the minimum required arguments
 scrapl_loss = SCRAPLLoss(
@@ -111,7 +158,7 @@ use_p_saga             = True
 sample_all_paths_first = False
 n_theta                = 1
 min_prob_frac          = 0.0
-number of SCRAPL keys  = 315
+number of SCRAPL paths = 315
 unif_prob              = 0.00317460
 ```
 
@@ -121,29 +168,35 @@ Calculating the loss for two signals:
 import torch as tr
 
 # Create two random tensors of shape (batch_size, num_channels, signal_length)
-x = tr.randn(4, 1, 48000) # Example input tensor 
+# (x requires grad here to stand in for the output of a model being trained)
+x = tr.randn(4, 1, 48000, requires_grad=True) # Example input tensor 
 x_target = tr.randn(4, 1, 48000) # Example target tensor 
 # Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
 # the loss value will be different each time `scrapl_loss()` is called.
 loss = scrapl_loss(x, x_target)
+loss.backward()
 print(f"SCRAPL loss: {loss.item()}")
 ```
+
+`SCRAPLLoss` keeps track of how many times each path has been used for training in `path_counts`. These statistics (and the internal 𝒫-Adam / 𝒫-SAGA step count) are only updated when the loss is in training mode and gradients flow back through it, i.e. once per `backward()` call, not once per forward call.
 
 `SCRAPLLoss` utility attributes and methods:
 
 ```python
 print(f"Number of scattering paths: {scrapl_loss.n_paths}")
 print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
-print(f"Most recently sampled path index (prev. example): {scrapl_loss.curr_path_idx}")
+print(f"Most recently sampled path index (prev. example): {scrapl_loss.last_sampled_path_idx}")
 
 # Calculate the loss for a specific path index
 loss = scrapl_loss(x, x_target, path_idx=8)
-print(f"Most recently sampled path index (specific): {scrapl_loss.curr_path_idx}")
+loss.backward()
+print(f"Most recently sampled path index (specific): {scrapl_loss.last_sampled_path_idx}")
 
 # Calculate the loss with a random seed for deterministic path sampling
 # (this will sample the same path index every time)
 loss = scrapl_loss(x, x_target, seed=42)
-print(f"Most recently sampled path index (random seed): {scrapl_loss.curr_path_idx}")
+loss.backward()
+print(f"Most recently sampled path index (random seed): {scrapl_loss.last_sampled_path_idx}")
 print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
 
 # Get the state dictionary of the SCRAPLLoss instance
@@ -167,6 +220,7 @@ Most recently sampled path index (prev. example): 106
 Most recently sampled path index (specific): 8
 Most recently sampled path index (random seed): 211
 Path sampling statistics (original): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+INFO:scrapl.scrapl_loss:Cleared state
 Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
 Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
 ```
@@ -226,6 +280,7 @@ This warmup step is done once before training on a subset of the training data (
 
 ```python
 import torch as tr
+from torch import nn
 from scrapl import SCRAPLLoss
 
 # Setup
@@ -346,8 +401,9 @@ INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to scrapl_wa
 
 [min, max] path sampling probabilities (after warmup): [0.123653, 0.162354]
 
+INFO:scrapl.scrapl_loss:Cleared state
 INFO:scrapl.scrapl_loss:Loading probs from directory:
-	scrapl_warmup
+	/path/to/scrapl_warmup
 	min prob = 0.123653, max prob = 0.162354
 ```
 
@@ -372,10 +428,10 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - Number of octaves in the JTFS (2nd order frequential filters)
 - `Q_fr` (int)
   - Wavelets per octave in the JTFS (2nd order frequential filters)
-- `T` (Optional[Union[str, int]])
+- `T` (str | int | None)
   - Temporal averaging size in samples of the JTFS. If 'global', averages over the entire signal. If 'None', averages over J**2 samples. 
   - Defaults to None.
-- `F` (Optional[Union[str, int]])
+- `F` (str | int | None)
   - Frequential averaging size in frequency bins of the JTFS. If 'global', averages over all bins. If 'None', averages over J_fr * Q_fr bins. 
   - Defaults to None.
 - `p` (int, optional)
@@ -403,7 +459,7 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - Defaults to True.
 - `sample_all_paths_first` (bool, optional)
   - If True, forces the sampler to visit every possible scattering path once in order before switching to the internal path sampling distribution. 
-  - sDefaults to False.
+  - Defaults to False.
 - `n_theta` (int, optional)
   - Given an encoder and decoder (synth) self-supervised training architecture, the number of encoder output / decoder (synth) input parameters θ<sub>synth</sub>. 
   - This is only required for the importance sampling heuristic (θ-IS) and calling the `warmup_lc_hvp()` method before training. 
@@ -411,7 +467,7 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 - `min_prob_frac` (float, optional)
   - When using θ-IS, the minimum fraction of the uniform sampling probability assigned to any path, ensuring no path has zero probability of being sampled. 
   - Defaults to 0.0.
-- `probs_path` (Optional[str], optional)
+- `probs_path` (str | None, optional)
   - File path to a `.pt` file containing pre-computed sampling probabilities for the scattering paths. 
   - Defaults to None.
 - `eps` (float, optional)
@@ -438,23 +494,23 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 - `synth_fn` (Callable[[T, ...], T])
   - The decoder (synthesizer) function. It must accept the θ<sub>synth</sub> tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
   - This function should be deterministic during warmup, but can be non-deterministic otherwise.
-- `theta_fn_kwargs` (List[Dict[str, Any]])
+- `theta_fn_kwargs` (list[dict[str, Any]])
   - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(n_batches, n_ch, n_samples)`. 
   - The length of this list determines the number of batches used for the loss landscape curvature estimation and is a tradeoff between computational cost and curvature estimation accuracy.
-- `params` (List[Parameter])
+- `params` (list[Parameter])
   - A list of encoder parameters (learnable weights) involved in the computation of θ<sub>synth</sub>. 
   - These parameters must have no prior gradients (i.e. `p.grad is None` for all `p` in `params`) before calling this method.
-- `synth_fn_kwargs` (Optional[List[Dict[str, Any]]], optional)
+- `synth_fn_kwargs` (list[dict[str, Any]] | None, optional)
   - A list of dictionaries corresponding to `theta_fn_kwargs`, containing additional arguments for `synth_fn`. 
   - If provided, must have the same length as `theta_fn_kwargs`. 
   - Defaults to None.
 - `start_path_idx` (int, optional)
   - The starting index of the scattering paths to compute. Used for parallelizing the warmup across multiple devices. 
   - Defaults to 0.
-- `end_path_idx` (Optional[int], optional)
+- `end_path_idx` (int | None, optional)
   - The ending index (exclusive) of the scattering paths to compute. If None, defaults to `self.n_paths`. 
   - Defaults to None.
-- `save_dir` (Optional[str], optional)
+- `save_dir` (str | None, optional)
   - Directory path where intermediate eigenvalues (`vals_{path_idx}.pt`) and the final path sampling probability distribution (`probs.pt`) will be saved. 
   - Defaults to "scrapl_warmup".
 - `n_iter` (int, optional)
@@ -494,10 +550,10 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/scrapl_algorithm.png)
 
 
-## Known Issues
+## Known Issues (PyTorch)
 
 - Resuming training from a checkpoint when model parameters have been attached (i.e. 𝒫-Adam, 𝒫-SAGA or `grad_mult` are enabled) is currently not supported.
-- Parallelization of the `warmup_lc_hvp` method across θ<sub>synth</sub> is currently not implemented, which may lead to long warmup times when the number of encoder output / decoder (synth) input parameters `n_theta` is large.
+- Parallelization of the `warmup_lc_hvp` method across θ<sub>synth</sub> is currently not implemented for PyTorch, which may lead to long warmup times when the number of encoder output / decoder (synth) input parameters `n_theta` is large.
 
 
 ## Citation
@@ -509,6 +565,7 @@ If you find this project helpful for your own work, please consider citing it:
     title={{SCRAPL}: Scattering Transform with Random Paths for Machine Learning},
     author={Christopher Mitcheltree and Vincent Lostanlen and Emmanouil Benetos and Mathieu Lagrange},
     booktitle={Proceedings of the International Conference on Learning Representations (ICLR)},
+    month={April},
     year={2026}
 }
 </code></pre>

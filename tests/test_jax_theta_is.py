@@ -115,16 +115,16 @@ def test_theta_is_matches_pytorch(
     np.testing.assert_allclose(
         np.asarray(result.curvatures)[converged],
         torch_curvatures[converged],
-        rtol=3e-3,
-        atol=3e-4,
+        rtol=1e-3,
+        atol=1e-4,
     )
 
     # 2. Verify path sampling probabilities match for the same curvatures
     np.testing.assert_allclose(
         np.asarray(theta_importance_probs(jax.numpy.asarray(torch_curvatures))),
         torch_loss.probs.numpy(),
-        rtol=3e-3,
-        atol=2e-5,
+        rtol=1e-6,
+        atol=1e-7,
     )
 
 
@@ -164,11 +164,11 @@ def test_split_warmup_loaded_from_dir_matches_full_warmup(tmp_path) -> None:
     # 2. The combined split runs match the full run
     warmup_lc_hvp(*args, start_path_idx=mid, save_dir=split_dir, **kwargs)
     loaded = load_warmup_from_dir(loss, split_dir, min_prob_frac=min_prob_frac)
-    np.testing.assert_allclose(loaded.curvatures, full.curvatures, rtol=1e-6)
+    np.testing.assert_allclose(loaded.curvatures, full.curvatures, rtol=1e-6, atol=1e-7)
     np.testing.assert_allclose(
         loaded.relative_residuals, full.relative_residuals, rtol=1e-6, atol=1e-7
     )
-    np.testing.assert_allclose(loaded.probs, full.probs, rtol=1e-6)
+    np.testing.assert_allclose(loaded.probs, full.probs, rtol=1e-6, atol=1e-7)
 
     # 3. Existing results are never overwritten
     with pytest.raises(AssertionError, match="already exists"):
