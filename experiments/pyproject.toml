@@ -21,6 +21,8 @@ dependencies = [
     "nvitop>=1.7.1",
     "pandas>=2.3.3",
     "pyloudnorm>=0.2.0",
+    # The kymatio submodule imports scipy.special.sph_harm, removed in scipy 1.17.
+    "scipy<1.17",
     "tensorboard>=2.21.0",
     "torch==2.8.0",
     "torchaudio==2.8.0",
@@ -33,6 +35,9 @@ dependencies = [
 # Experiments are run, not built or published.
 package = false
 python-preference = "only-managed"
+
+# msclap caps numpy<2, which conflicts with scrapl-loss's numpy>=2.1.0.
+override-dependencies = ["numpy>=2.1.0"]
 
 # Use the scrapl-loss library from the repo root, in editable mode.
 [tool.uv.sources]
