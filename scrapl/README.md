@@ -88,7 +88,7 @@ Then:
 `from scrapl.jax import SCRAPLLoss`
 
 
-**3. All extras (for testing):**
+**3. All extras:**
 
 ```sh
 uv add 'scrapl-loss[torch,jax,test]'
@@ -100,12 +100,6 @@ or
 pip install 'scrapl-loss[torch,jax,test]'
 ```
 
-To run the test suite with `uv`: 
-
-```sh
-uv run pytest
-```
-
 
 **4. From source checkout:**
 
@@ -114,11 +108,17 @@ git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
 uv sync --extra torch --extra jax --extra test
 ```
 
+To run the test suite with `uv`: 
+
+```sh
+uv run pytest
+```
+
 **Requirements:**
 
-The package requires Python 3.10 or higher, NumPy and SciPy. 
-The Torch backend requires `2.8.0 <= torch < 3.0.0` and the JAX backend requires 
-`jax >= 0.5.0`, `equinox>=0.13.0`, `optax>=0.2.5`, and `jaxtyping>=0.3.0`.
+The package requires Python 3.13 or higher, `numpy>=2.1.0`, and `scipy>=1.14.1`.
+The Torch backend requires `torch>=2.6.0` and the JAX backend requires
+`jax>=0.5.0`, `equinox>=0.11.5`, `optax>=0.2.5`, `jaxtyping>=0.2.20`, and `tqdm>=4.66.0`.
 A bare installation with no extras includes neither framework, so PyTorch users
 should select `[torch]`.
 Trying to access an uninstalled backend will report the required installation command.
@@ -563,6 +563,8 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 ## Citation
 
 If you find this project helpful for your own work, please consider citing it:
+
+Accepted to the International Conference on Learning Representations (ICLR), Rio de Janeiro, Brazil, 23 - 27 April 2026.
 
 <pre><code>
 @inproceedings{mitcheltree2026scrapl,
