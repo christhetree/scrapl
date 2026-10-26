@@ -9,6 +9,8 @@ import torchaudio
 from torch import Tensor as T
 from torch.utils.data import DataLoader, Dataset
 
+from src.paths import ROOT_DIR
+
 logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -167,6 +169,8 @@ class WavDataModule(pl.LightningDataModule):
         num_workers: int = 0,
     ):
         super().__init__()
+        # Relative paths are relative to the experiments directory
+        root_dir = os.path.join(ROOT_DIR, root_dir)
         self.batch_size = batch_size
         self.root_dir = root_dir
         self.sr = sr

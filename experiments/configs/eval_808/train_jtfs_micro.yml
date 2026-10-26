@@ -20,7 +20,7 @@ data:
   class_path: eval_808.data.WavDataModule
   init_args:
     batch_size: 2
-    root_dir: ../data/808_dataset
+    root_dir: data/808_dataset
     sr: 44100
     n_samples: 44100
     n_train: 425
