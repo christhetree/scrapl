@@ -116,7 +116,7 @@ Then:
 `from scrapl.jax import SCRAPLLoss`
 
 
-**3. All extras (for testing):**
+**3. All extras:**
 
 ```sh
 uv add 'scrapl-loss[torch,jax,test]'
@@ -128,12 +128,6 @@ or
 pip install 'scrapl-loss[torch,jax,test]'
 ```
 
-To run the test suite with `uv`: 
-
-```sh
-uv run pytest
-```
-
 
 **4. From source checkout:**
 
@@ -142,11 +136,17 @@ git submodule update --init scrapl/kymatio scrapl/pytorch_hessian_eigenthings
 uv sync --extra torch --extra jax --extra test
 ```
 
+To run the test suite with `uv`: 
+
+```sh
+uv run pytest
+```
+
 **Requirements:**
 
-The package requires Python 3.10 or higher, NumPy and SciPy. 
-The Torch backend requires `2.8.0 <= torch < 3.0.0` and the JAX backend requires 
-`jax >= 0.5.0`, `equinox>=0.13.0`, `optax>=0.2.5`, and `jaxtyping>=0.3.0`.
+The package requires Python 3.13 or higher, `numpy>=2.1.0`, and `scipy>=1.14.1`.
+The Torch backend requires `torch>=2.6.0` and the JAX backend requires
+`jax>=0.5.0`, `equinox>=0.11.5`, `optax>=0.2.5`, `jaxtyping>=0.2.20`, and `tqdm>=4.66.0`.
 A bare installation with no extras includes neither framework, so PyTorch users
 should select `[torch]`.
 Trying to access an uninstalled backend will report the required installation command.
@@ -603,22 +603,29 @@ We make our code and audio samples available and provide SCRAPL as a Python pack
 
 ## Instructions for Reproducibility
 
-1. Experiments were conducted on Linux with Python 3.10, PyTorch 2.8.0, and CUDA 12.4.
+1. Experiments were conducted on Linux with Python 3.10, PyTorch 2.8.0, and CUDA 12.4.\
+   The experiments environment now uses Python 3.13.
 1. Clone this repository and open its directory.
 1. Be sure to initialize the submodules:\
    `git submodule update --init --recursive`
-1. Install the environment and dependencies using [`uv`](https://docs.astral.sh/uv/):\
-   `uv sync --group experiments`
+1. The experiments are a standalone [`uv`](https://docs.astral.sh/uv/) project with their own
+   [`pyproject.toml`](./experiments/pyproject.toml), lockfile, and virtual environment,
+   separate from the `scrapl-loss` package in the repository root.
+   The `scrapl-loss` package is installed into it in editable mode from the repository root.
+   Install the environment and dependencies from the `experiments/` directory:\
+   `cd experiments && uv sync`\
+   If a virtual environment from the repository root is activated, run `deactivate` first.
 1. The source code for the SCRAPL algorithm can be explored in the [`scrapl/`](./scrapl) directory.
 1. The source code for the three experiments in the paper can be explored in the [`experiments/`](./experiments) directory.
 1. All experiment config files can be found in the [`experiments/configs/`](./experiments/configs) directory.
 1. The dataset for the Roland TR-808 sound matching task can be found [here](https://samplesfrommars.com/products/tr-808-samples) and needs to be placed in [`experiments/data/808_dataset/`](./experiments/data/808_dataset/file_list.txt).
-1. Create an out directory (`mkdir -p experiments/out`).
+1. Create an out directory from the `experiments/` directory (`mkdir -p out`).
 1. Models for each experiment can be trained and evaluated by modifying [`experiments/scripts/train.py`](./experiments/scripts/train.py)\
-   and the corresponding `experiments/configs/.../train_ ... .yml` config file and then running:\
-   `uv run python train.py` from the `experiments/scripts/` directory.\
-   Make sure your PYTHONPATH has been set correctly by running a command like:\
-   `export PYTHONPATH=$PYTHONPATH:[ROOT_DIR]/experiments/`
+   and the corresponding `experiments/configs/.../train_ ... .yml` config file and then running
+   from the `experiments/` directory:\
+   `uv run python -m scripts.train`\
+   Relative data paths in the config files (e.g. `data/808_dataset`) are resolved relative to the
+   `experiments/` directory.
 1. The experiments source code is currently not documented, but don't hesitate to open an issue if you have any questions or comments.
 1. The SCRAPL package for the joint time-frequency scattering transform (JTFS) can be installed by following the [Installation](#installation) instructions above.\
    The package documentation can be found in the [`scrapl/`](./scrapl) directory.
