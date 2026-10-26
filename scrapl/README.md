@@ -5,8 +5,10 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-supported-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![JAX](https://img.shields.io/badge/JAX-supported-5E97F6)](https://github.com/jax-ml/jax)
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
+[![Video](https://img.shields.io/badge/%F0%9F%8E%A5-Video-blue)](https://iclr.cc/virtual/2026/poster/10009456)
+[![Poster](https://img.shields.io/badge/%F0%9F%AA%A7-Poster-blue)](https://christhetree.github.io/scrapl/docs/mitcheltree2026scrapl_poster.pdf)
 [![Listening Samples](https://img.shields.io/badge/%F0%9F%94%8A%F0%9F%8E%B6-Listening_Samples-blue)](https://christhetree.github.io/scrapl/)
-[![License](https://img.shields.io/badge/License-MIT-blue)](https://opensource.org/license/mit)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](https://opensource.org/license/mit)
 </div>
 
 `scrapl-loss` is a Python package for efficient evaluation of multivariable scattering transforms, specifically designed for use as a differentiable loss function in machine learning applications and perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing. 
@@ -28,7 +30,8 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Are misaligned in time or frequency and therefore benefit from temporal and frequential shift invariance
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
-This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
+> [!NOTE]
+> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -126,7 +129,8 @@ Trying to access an uninstalled backend will report the required installation co
 
 ## Examples (PyTorch)
 
-This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
+> [!NOTE]
+> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
 
 
 Importing and initializing `SCRAPLLoss` with the minimum required arguments:
@@ -180,7 +184,8 @@ loss.backward()
 print(f"SCRAPL loss: {loss.item()}")
 ```
 
-`SCRAPLLoss` keeps track of how many times each path has been used for training in `path_counts`. These statistics (and the internal 𝒫-Adam / 𝒫-SAGA step count) are only updated when the loss is in training mode and gradients flow back through it, i.e. once per `backward()` call, not once per forward call.
+> [!NOTE]
+> `SCRAPLLoss` keeps track of how many times each path has been used for training in `path_counts`. These statistics (and the internal 𝒫-Adam / 𝒫-SAGA step count) are only updated when the loss is in training mode and gradients flow back through it, i.e. once per `backward()` call, not once per forward call.
 
 `SCRAPLLoss` utility attributes and methods:
 
@@ -233,8 +238,12 @@ Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211
 
 𝒫-Adam and 𝒫-SAGA are enabled by default when initializing `SCRAPLLoss`.
 The Adam hyperparameters β1, β2, and ε can be set using the `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` arguments in the `SCRAPLLoss` constructor.
-However, the learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` for 𝒫-Adam and 𝒫-SAGA to have any effect.
-When 𝒫-Adam and 𝒫-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer:
+
+> [!IMPORTANT]
+> The learnable weights of the neural network being optimized must be attached to `SCRAPLLoss` using `attach_params()` for 𝒫-Adam and 𝒫-SAGA to have any effect.
+> When 𝒫-Adam and 𝒫-SAGA are enabled, vanilla stochastic gradient descent (SGD) with no momentum and optional weight decay should be used as the downstream optimizer.
+
+For example:
 
 ```python
 from torch import nn
@@ -281,6 +290,10 @@ INFO:scrapl.scrapl_loss:Detached 5 parameter tensors
 The SCRAPL algorithm includes an importance sampling heuristic (θ-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
 This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters θ<sub>synth</sub> for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
 This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths (currently implemented) and θ<sub>synth</sub> (to be added in the future).
+
+> [!IMPORTANT]
+> The encoder and decoder (synth) must be deterministic during warmup, but can be non-deterministic otherwise.
+> This can be verified before warmup using `check_is_deterministic()`.
 
 ```python
 import torch as tr
@@ -433,7 +446,7 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 - `Q_fr` (int)
   - Wavelets per octave in the JTFS (2nd order frequential filters)
 - `T` (str | int | None)
-  - Temporal averaging size in samples of the JTFS. If 'global', averages over the entire signal. If 'None', averages over J**2 samples. 
+  - Temporal averaging size in samples of the JTFS. If 'global', averages over the entire signal. If 'None', averages over 2**J samples. 
   - Defaults to None.
 - `F` (str | int | None)
   - Frequential averaging size in frequency bins of the JTFS. If 'global', averages over all bins. If 'None', averages over J_fr * Q_fr bins. 

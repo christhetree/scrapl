@@ -72,7 +72,7 @@ class SCRAPLLoss(eqx.Module):
                 Defaults to None.
             F (str | int | None): Frequential averaging size in frequency
                 bins of the JTFS. If 'global', averages over all bins. If 'None',
-                averages over 2**J_fr bins.
+                averages over J_fr * Q_fr bins.
                 Defaults to None.
             p (float, optional): The order of the norm used for the distance calculation.
                 Defaults to 2 (Euclidean norm).
