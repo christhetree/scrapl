@@ -10,7 +10,7 @@ import torch as tr
 import torchaudio
 from src.lightning import SCRAPLLightingModule
 from src.losses import JTFSTLoss, Scat1DLoss, MFCCDistance
-from src.paths import OUT_DIR, CONFIGS_DIR, AUDIO_SAVE_DIR, TSV_SAVE_DIR
+from src.paths import OUT_DIR, CONFIGS_DIR, AUDIO_SAVE_DIR, TSV_SAVE_DIR, ROOT_DIR
 from scrapl.scrapl_loss import SCRAPLLoss
 from nnAudio.features import CQT
 from torch import Tensor as T
@@ -156,7 +156,8 @@ class DDSP808LightingModule(pl.LightningModule):
             params = list(self.model.parameters())
             self.loss_func.attach_params(params)
             if scrapl_probs_path is not None:
-                self.loss_func.load_probs(scrapl_probs_path)
+                # Relative paths are relative to the experiments directory
+                self.loss_func.load_probs(os.path.join(ROOT_DIR, scrapl_probs_path))
 
         # TSV logging
         self.drum_types = ["BD", "SD", "Tom", "HH"]

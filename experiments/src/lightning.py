@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from src import util
 from src.losses import JTFSTLoss, Scat1DLoss
-from src.paths import OUT_DIR, CONFIGS_DIR
+from src.paths import OUT_DIR, CONFIGS_DIR, ROOT_DIR
 from scrapl.scrapl_loss import SCRAPLLoss
 
 logging.basicConfig()
@@ -141,7 +141,8 @@ class SCRAPLLightingModule(pl.LightningModule):
             params = list(self.model.parameters())
             self.loss_func.attach_params(params)
             if scrapl_probs_path is not None:
-                self.loss_func.load_probs(scrapl_probs_path)
+                # Relative paths are relative to the experiments directory
+                self.loss_func.load_probs(os.path.join(ROOT_DIR, scrapl_probs_path))
 
         # TSV logging
         tsv_cols = [
