@@ -31,7 +31,7 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
 > [!NOTE]
-> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
+> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/tree/main/scrapl/jax).
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -120,7 +120,7 @@ uv run pytest
 **Requirements:**
 
 The package requires Python 3.13 or higher, `numpy>=2.1.0`, and `scipy>=1.14.1`.
-The Torch backend requires `torch>=2.6.0` and the JAX backend requires
+The Torch backend requires `torch>=2.6.0` and `packaging>=20.0`, and the JAX backend requires
 `jax>=0.5.0`, `equinox>=0.11.5`, `optax>=0.2.5`, `jaxtyping>=0.2.20`, and `tqdm>=4.66.0`.
 A bare installation with no extras includes neither framework, so PyTorch users
 should select `[torch]`.
@@ -130,13 +130,13 @@ Trying to access an uninstalled backend will report the required installation co
 ## Examples (PyTorch)
 
 > [!NOTE]
-> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/blob/main/scrapl/jax/README.md).
+> This documentation README is for PyTorch, [please click here for the JAX documentation README](https://github.com/christhetree/scrapl/tree/main/scrapl/jax).
 
 
 Importing and initializing `SCRAPLLoss` with the minimum required arguments:
 
 ```python
-# Import SCRAPLLoss from the scrapl Python package
+# Import SCRAPLLoss from the scrapl.torch Python package
 from scrapl.torch import SCRAPLLoss
 
 # Initialize SCRAPLLoss with the minimum required arguments
@@ -170,6 +170,9 @@ Calculating the loss for two signals:
 
 ```python 
 import torch as tr
+
+# Set the random seed so that this example is reproducible
+tr.manual_seed(0)
 
 # Create two random tensors of shape (batch_size, num_channels, signal_length)
 # (x requires grad here to stand in for the output of a model being trained)
@@ -225,13 +228,13 @@ Console output:
 ```text
 Number of scattering paths: 315
 Uniform path sampling probability: 0.003175
-Most recently sampled path index (prev. example): 106
+Most recently sampled path index (prev. example): 267
 Most recently sampled path index (specific): 8
 Most recently sampled path index (random seed): 211
-Path sampling statistics (original): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+Path sampling statistics (original): defaultdict(<class 'int'>, {267: 1, 8: 1, 211: 1})
 INFO:scrapl.scrapl_loss:Cleared state
 Path sampling statistics (cleared): defaultdict(<class 'int'>, {})
-Path sampling statistics (loaded): defaultdict(<class 'int'>, {106: 1, 8: 1, 211: 1})
+Path sampling statistics (loaded): defaultdict(<class 'int'>, {267: 1, 8: 1, 211: 1})
 ```
 
 ### Using 𝒫-Adam and 𝒫-SAGA
@@ -305,7 +308,7 @@ tr.set_printoptions(precision=4, sci_mode=False)
 tr.manual_seed(42)
 bs = 4
 n_ch = 1
-n_samples = 8096
+n_samples = 8192
 # Number of parameters output by the encoder and input to the decoder (synth)
 n_theta = 3
 # Number of batches to use for warmup; when possible, one large batch filling all
@@ -398,30 +401,20 @@ unif_prob              = 0.14285714
 
 Uniform path sampling probability: 0.142857
 [min, max] path sampling probabilities (before warmup): [0.142857, 0.142857]
-
 INFO:scrapl.scrapl_loss:Starting warmup_lc_hvp with agg = none for 5 parameter(s) and 1 batch(es), 20 iter (multibatch = False)
- [=========================== 20/20 ===========================>...]  Step: 38ms | Tot: 749ms | power iter error: 0.0001
-INFO:scrapl.scrapl_loss:path_idx = 0, curr_vals = tensor([0.9898, 0.1256, 0.2016])
- [=========================== 20/20 ===========================>...]  Step: 59ms | Tot: 1s190ms | power iter error: 0.0117
-INFO:scrapl.scrapl_loss:path_idx = 1, curr_vals = tensor([1.0082, 0.1349, 0.1406])
- [=========================== 20/20 ===========================>...]  Step: 58ms | Tot: 1s148ms | power iter error: 0.0045
-INFO:scrapl.scrapl_loss:path_idx = 2, curr_vals = tensor([0.9389, 0.0788, 0.1565])
- [=========================== 20/20 ===========================>...]  Step: 62ms | Tot: 1s105ms | power iter error: 0.0016
-INFO:scrapl.scrapl_loss:path_idx = 3, curr_vals = tensor([0.9059, 0.1199, 0.1678])
- [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s111ms | power iter error: 0.0113
-INFO:scrapl.scrapl_loss:path_idx = 4, curr_vals = tensor([1.0138, 0.1352, 0.1418])
- [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s104ms | power iter error: 0.0038
-INFO:scrapl.scrapl_loss:path_idx = 5, curr_vals = tensor([0.9248, 0.0741, 0.1556])
- [=========================== 20/20 ===========================>...]  Step: 56ms | Tot: 1s109ms | power iter error: 0.0014
-INFO:scrapl.scrapl_loss:path_idx = 6, curr_vals = tensor([0.8879, 0.1157, 0.1654])
-INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to scrapl_warmup/probs.pt
-
-[min, max] path sampling probabilities (after warmup): [0.123653, 0.162354]
-
+INFO:scrapl.scrapl_loss:path_idx = 0, curr_vals = tensor([0.1189, 2.5856, 0.6996]) Tot: 287ms | power iter error: 0.0000
+INFO:scrapl.scrapl_loss:path_idx = 1, curr_vals = tensor([0.1053, 1.8463, 0.5497]) Tot: 339ms | power iter error: 0.0001
+INFO:scrapl.scrapl_loss:path_idx = 2, curr_vals = tensor([0.1051, 2.0229, 0.6366]) Tot: 350ms | power iter error: 0.0000
+INFO:scrapl.scrapl_loss:path_idx = 3, curr_vals = tensor([0.1080, 2.0151, 0.5734]) Tot: 544ms | power iter error: 0.0000
+INFO:scrapl.scrapl_loss:path_idx = 4, curr_vals = tensor([0.1047, 1.8369, 0.5450]) Tot: 515ms | power iter error: 0.0001
+INFO:scrapl.scrapl_loss:path_idx = 5, curr_vals = tensor([0.1044, 2.0086, 0.6305]) Tot: 393ms | power iter error: 0.0000
+INFO:scrapl.scrapl_loss:path_idx = 6, curr_vals = tensor([0.1076, 2.0071, 0.5698]) Tot: 463ms | power iter error: 0.0000
+INFO:scrapl.scrapl_loss:Saving warmup SCRAPL sampling probabilities to /path/to/scrapl_warmup/probs.pt
+[min, max] path sampling probabilities (after warmup): [0.132245, 0.168210]
 INFO:scrapl.scrapl_loss:Cleared state
 INFO:scrapl.scrapl_loss:Loading probs from directory:
 	/path/to/scrapl_warmup
-	min prob = 0.123653, max prob = 0.162354
+	min prob = 0.132245, max prob = 0.168210
 ```
 
 
@@ -509,10 +502,10 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - The encoder function. It must accept arguments provided in `theta_fn_kwargs` and return a tensor θ<sub>synth</sub> of shape `(batch_size, n_theta)`. 
   - This function should be deterministic during warmup, but can be non-deterministic otherwise.
 - `synth_fn` (Callable[[T, ...], T])
-  - The decoder (synthesizer) function. It must accept the θ<sub>synth</sub> tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(n_batches, n_ch, n_samples)`. 
+  - The decoder (synthesizer) function. It must accept the θ<sub>synth</sub> tensor output by `theta_fn` (and optional `synth_fn_kwargs`) and return a signal tensor `x_hat` of shape `(batch_size, n_ch, n_samples)`. 
   - This function should be deterministic during warmup, but can be non-deterministic otherwise.
 - `theta_fn_kwargs` (list[dict[str, Any]])
-  - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(n_batches, n_ch, n_samples)`. 
+  - A list of dictionaries, where each dictionary contains a batch of input arguments for `theta_fn`. One of these arguments must be the input signal `x` of shape `(batch_size, n_ch, n_samples)`. 
   - The length of this list determines the number of batches used for the loss landscape curvature estimation and is a tradeoff between computational cost and curvature estimation accuracy.
 - `params` (list[Parameter])
   - A list of encoder parameters (learnable weights) involved in the computation of θ<sub>synth</sub>. 

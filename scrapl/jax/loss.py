@@ -54,7 +54,7 @@ class SCRAPLLoss(eqx.Module):
         "Scattering Transform with Random Paths for Machine Learning" (SCRAPL) algorithm
         for the joint time-frequency scattering transform (JTFS) in JAX.
         For documentation, examples, hyperparameters, and best practices, please visit:
-        https://github.com/christhetree/scrapl
+        https://github.com/christhetree/scrapl/tree/main/scrapl/jax
         For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`,
         `T`, and `F` hyperparameters, please visit:
         https://www.kymat.io/ismir23-tutorial/intro.html

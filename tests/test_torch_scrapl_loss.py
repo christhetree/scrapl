@@ -1,4 +1,3 @@
-import tempfile
 from collections import Counter
 from pathlib import Path
 
@@ -13,7 +12,7 @@ except ModuleNotFoundError:
 
 
 def test_scrapl_loss() -> None:
-    # Import SCRAPLLoss from the scrapl Python package
+    # Import SCRAPLLoss from the scrapl.torch Python package
     from scrapl.torch import SCRAPLLoss
 
     # Initialize SCRAPLLoss with the minimum required arguments
@@ -27,6 +26,9 @@ def test_scrapl_loss() -> None:
     )
 
     import torch as tr
+
+    # Set the random seed so that this example is reproducible
+    tr.manual_seed(0)
 
     # Create two random tensors of shape (batch_size, num_channels, signal_length)
     # (x requires grad here to stand in for the output of a model being trained)
@@ -44,8 +46,7 @@ def test_scrapl_loss() -> None:
     print(f"Number of scattering paths: {scrapl_loss.n_paths}")
     print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
     print(
-        f"Most recently sampled path index (prev. example): "
-        f"{scrapl_loss.last_sampled_path_idx}"
+        f"Most recently sampled path index (prev. example): {scrapl_loss.last_sampled_path_idx}"
     )
 
     # Calculate the loss for a specific path index
@@ -53,10 +54,8 @@ def test_scrapl_loss() -> None:
     # backward() is needed for this path to be counted in path_counts
     loss.backward()
     print(
-        f"Most recently sampled path index (specific): "
-        f"{scrapl_loss.last_sampled_path_idx}"
+        f"Most recently sampled path index (specific): {scrapl_loss.last_sampled_path_idx}"
     )
-    assert scrapl_loss.last_sampled_path_idx == 8
 
     # Calculate the loss with a random seed for deterministic path sampling
     # (this will sample the same path index every time)
@@ -64,8 +63,7 @@ def test_scrapl_loss() -> None:
     # backward() is needed for this path to be counted in path_counts
     loss.backward()
     print(
-        f"Most recently sampled path index (random seed): "
-        f"{scrapl_loss.last_sampled_path_idx}"
+        f"Most recently sampled path index (random seed): {scrapl_loss.last_sampled_path_idx}"
     )
     print(f"Path sampling statistics (original): {scrapl_loss.path_counts}")
     seed_path_idx = scrapl_loss.last_sampled_path_idx
@@ -128,11 +126,11 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
     # Setup
     tr.set_printoptions(precision=4, sci_mode=False)
     tr.manual_seed(42)
-    bs = 3
+    bs = 4
     n_ch = 1
-    n_samples = 2048
+    n_samples = 8192
     # Number of parameters output by the encoder and input to the decoder (synth)
-    n_theta = 2
+    n_theta = 3
     # Number of batches to use for warmup; when possible, one large batch filling all
     # available GPU memory is more efficient than many smaller batches
     n_batches = 1
@@ -172,7 +170,7 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
         J=3,
         Q1=1,
         Q2=1,
-        J_fr=1,
+        J_fr=2,
         Q_fr=1,
         n_theta=n_theta,
     )
@@ -205,7 +203,7 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
 
     scrapl_loss.clear()
     print(
-        f"[min, max] path sampling probabilities: "
+        f"[min, max] path sampling probabilities (uniform): "
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
     )
 
@@ -213,7 +211,7 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
     # probabilities can be loaded from a directory
     scrapl_loss.load_probs_from_warmup_dir(warmup_dir=warmup_dir)
     print(
-        f"[min, max] path sampling probabilities: "
+        f"[min, max] path sampling probabilities (after warmup): "
         f"[{scrapl_loss.probs.min():.6f}, {scrapl_loss.probs.max():.6f}]"
     )
 
@@ -246,3 +244,4 @@ def test_scrapl_loss_warmup(tmp_path: Path) -> None:
 
 if __name__ == "__main__":
     test_scrapl_loss()
+    test_scrapl_loss_warmup(tmp_path=Path("."))

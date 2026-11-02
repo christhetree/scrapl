@@ -361,7 +361,7 @@ def p_saga(n_paths: int) -> optax.GradientTransformationExtraArgs:
 
 
 def scrapl_optimizer(
-    learning_rate: float = 1e-3,
+    learning_rate: float = 1e-4,
     weight_decay: float = 0.01,
     *,
     n_paths: int,
@@ -381,11 +381,11 @@ def scrapl_optimizer(
     `path_idx`.
 
     For documentation, examples, hyperparameters, and best practices, please visit:
-    https://github.com/christhetree/scrapl
+    https://github.com/christhetree/scrapl/tree/main/scrapl/jax
 
     Args:
         learning_rate (float, optional): Base learning rate for parameter updates.
-            Defaults to 1e-3.
+            Defaults to 1e-4.
         weight_decay (float, optional): L2 weight decay factor added to updates
             before learning rate scaling.
             Defaults to 0.01.
