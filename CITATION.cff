@@ -14,8 +14,8 @@ authors:
     given-names: "Mathieu"
     orcid: "https://orcid.org/0000-0002-1253-4427"
 title: "SCRAPL: Scattering Transform with Random Paths for Machine Learning"
-version: 0.1.0
-date-released: 2026-02-10
+version: 0.2.0
+date-released: 2026-11-02
 url: "https://github.com/christhetree/scrapl"
 preferred-citation:
   type: conference-paper

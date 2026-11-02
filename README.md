@@ -9,7 +9,7 @@
 <a href="https://mathieulagrange.github.io/" target=”_blank”>Mathieu Lagrange</a>
 </p>
 
-[![Release](https://img.shields.io/badge/PyPI-v0.1.0-green)](https://pypi.org/project/scrapl-loss/)
+[![Release](https://img.shields.io/badge/PyPI-v0.2.0-green)](https://pypi.org/project/scrapl-loss/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-supported-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![JAX](https://img.shields.io/badge/JAX-supported-5E97F6)](https://github.com/jax-ml/jax)
 [![OpenReview](https://img.shields.io/badge/OpenReview-ICLR_2026_Paper-b31b1b.svg)](https://openreview.net/forum?id=RuYwbd5xYa)
