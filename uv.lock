@@ -817,6 +817,7 @@ test = [
     { name = "tqdm" },
 ]
 torch = [
+    { name = "packaging" },
     { name = "torch" },
 ]
 
@@ -828,6 +829,7 @@ requires-dist = [
     { name = "jaxtyping", marker = "extra == 'jax'", specifier = ">=0.2.20" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "optax", marker = "extra == 'jax'", specifier = ">=0.2.5" },
+    { name = "packaging", marker = "extra == 'torch'", specifier = ">=20.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
     { name = "scipy", specifier = ">=1.14.1" },
     { name = "torch", marker = "extra == 'torch'", specifier = ">=2.6.0" },

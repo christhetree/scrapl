@@ -525,7 +525,7 @@ def warmup_lc_hvp(
     Executes the θ-Importance Sampling (θ-IS) warmup procedure to
     initialize a non-uniform scattering path sampling probability distribution
     based on the local curvature of the loss landscape. For more information please
-    visit: https://github.com/christhetree/scrapl/#importance-sampling-warmup
+    visit: https://github.com/christhetree/scrapl/tree/main/scrapl/jax#importance-sampling-warmup
 
     Must be called outside JIT. Each path is compiled separately and batches are
     evaluated sequentially to limit memory use. Batch curvature products are

@@ -27,6 +27,7 @@ keywords = [
 
 [project.optional-dependencies]
 torch = [
+    "packaging>=20.0",
     "torch>=2.6.0",
 ]
 jax = [

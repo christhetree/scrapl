@@ -31,7 +31,7 @@ Overall, SCRAPL with the JTFS is best suited for comparing audio signals that me
 - Cannot be effectively compared with time-domain (e.g. mean squared error (MSE) / error-to-signal ratio (ESR) loss), frequency-domain (e.g. multiscale spectral (MSS) loss), or neural embedding-based (e.g. CLAP / PANNs / EnCodec distances) losses 
 
 > [!NOTE]
-> This documentation README is for JAX, [please click here for the PyTorch documentation README](https://github.com/christhetree/scrapl/blob/main/README.md).
+> This documentation README is for JAX, [please click here for the PyTorch documentation README](https://github.com/christhetree/scrapl).
 
 
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/relative_param_error_vs_computation_colored.svg)
@@ -50,7 +50,6 @@ JTFS-based sound matching is evaluated only once._
 - [Hyperparameters](#hyperparameters)
 - [Best Practices](#best-practices)
 - [Algorithm](#algorithm)
-- [Implementation Details (JAX)](#implementation-details-jax)
 - [Known Issues (JAX)](#known-issues-jax)
 - [Citation](#citation)
 
@@ -121,7 +120,7 @@ uv run pytest
 **Requirements:**
 
 The package requires Python 3.13 or higher, `numpy>=2.1.0`, and `scipy>=1.14.1`.
-The Torch backend requires `torch>=2.6.0` and the JAX backend requires
+The Torch backend requires `torch>=2.6.0` and `packaging>=20.0`, and the JAX backend requires
 `jax>=0.5.0`, `equinox>=0.11.5`, `optax>=0.2.5`, `jaxtyping>=0.2.20`, and `tqdm>=4.66.0`.
 A bare installation with no extras includes neither framework, so JAX users
 should select `[jax]`.
@@ -132,13 +131,13 @@ Trying to access an uninstalled backend will report the required installation co
 ## Examples (JAX)
 
 > [!NOTE]
-> This documentation README is for JAX, [please click here for the PyTorch documentation README](https://github.com/christhetree/scrapl/blob/main/README.md).
+> This documentation README is for JAX, [please click here for the PyTorch documentation README](https://github.com/christhetree/scrapl).
 
 
 Importing and initializing `SCRAPLLoss` with the minimum required arguments:
 
 ```python
-# Import SCRAPLLoss from the scrapl.jax Python module
+# Import SCRAPLLoss from the scrapl.jax Python package
 from scrapl.jax import SCRAPLLoss
 
 # Initialize SCRAPLLoss with the minimum required arguments
@@ -172,9 +171,13 @@ key = jax.random.key(0)
 key_x, key_target, key_loss = jax.random.split(key, 3)
 x = jax.random.normal(key_x, (4, 1, 48000))  # Example input array
 x_target = jax.random.normal(key_target, (4, 1, 48000))  # Example target array
-# Compute the SCRAPL loss between x and x_target. Since SCRAPL is stochastic,
-# a different PRNG key will usually sample a different scattering path.
-loss = scrapl_loss(x, x_target, key=key_loss)
+# Sample a scattering path index. Since SCRAPL is stochastic, a different PRNG key
+# will usually sample a different path, resulting in a different loss value. 
+# Sampling the path separately is necessary for JIT compilation (see the training 
+# example below).
+path_idx = scrapl_loss.sample_path(key_loss)
+# Compute the SCRAPL loss between x and x_target for the sampled path
+loss = scrapl_loss(x, x_target, path_idx=path_idx)
 print(f"SCRAPL loss: {float(loss)}")
 ```
 
@@ -220,6 +223,8 @@ For example:
 
 ```python
 import equinox as eqx
+import optax
+from jaxtyping import Array, Float
 from scrapl.jax import scrapl_optimizer
 
 # Toy example model
@@ -245,8 +250,14 @@ opt_state = optimizer.init(params)
 # so it is a static argument of the JIT-compiled function (each new path index
 # triggers a compilation the first time it is used)
 @eqx.filter_jit
-def train_step(model, opt_state, x, x_target, path_idx):
-    def loss_fn(m):
+def train_step(
+    model: eqx.nn.MLP,
+    opt_state: optax.OptState,
+    x: Float[Array, "bs n_ch n_samples"],
+    x_target: Float[Array, "bs n_ch n_samples"],
+    path_idx: int,
+) -> tuple[eqx.nn.MLP, optax.OptState, Float[Array, ""]]:
+    def loss_fn(m: eqx.nn.MLP) -> Float[Array, ""]:
         x_hat = jax.vmap(m)(x.squeeze(1))[:, None, :]
         return scrapl_loss(x_hat, x_target, path_idx=path_idx)
 
@@ -265,11 +276,17 @@ model, opt_state, loss = train_step(model, opt_state, x, x_target, path_idx)
 print(f"SCRAPL loss: {float(loss)}")
 ```
 
+Console output:
+
+```text
+SCRAPL loss: 0.010025717318058014
+```
+
 ### Importance Sampling Warmup
 
 The SCRAPL algorithm includes an importance sampling heuristic (θ-IS) that learns a non-uniform sampling distribution over scattering paths given an encoder and decoder (synth) self-supervised training architecture. 
 This is done by measuring the curvature of the loss landscape with respect to the encoder output / decoder (synth) input parameters θ<sub>synth</sub> for each path, see Sections 3.4, 4.3, and 5.2 in the [paper](https://openreview.net/forum?id=RuYwbd5xYa) for more details.
-This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths and θ<sub>synth</sub> (using `vmap_theta=True`).
+This warmup step is done once before training on a subset of the training data (typically 32-256 samples) and can be parallelized across paths (by splitting `start_path_idx` / `end_path_idx` across devices) and θ<sub>synth</sub> (using `vmap_theta=True`).
 
 > [!IMPORTANT]
 > The encoder and decoder (synth) must be deterministic during warmup, but can be non-deterministic otherwise.
@@ -278,12 +295,14 @@ This warmup step is done once before training on a subset of the training data (
 ```python
 import equinox as eqx
 import jax
+import jax.numpy as jnp
+from jaxtyping import Array, Float, PyTree
 from scrapl.jax import SCRAPLLoss, load_warmup_from_dir, warmup_lc_hvp
 
 # Setup
 bs = 4
 n_ch = 1
-n_samples = 8096
+n_samples = 8192
 # Number of parameters output by the encoder and input to the decoder (synth)
 n_theta = 3
 # Number of batches to use for warmup; when possible, one large batch filling all
@@ -304,7 +323,9 @@ encoder = eqx.nn.MLP(
 # Split the encoder into its trainable weights and its static parts
 enc_params, enc_static = eqx.partition(encoder, eqx.is_inexact_array)
 # Make the encoder forward call functional (stateless)
-def enc_fn(params, x):
+def enc_fn(
+    params: PyTree[Float[Array, "..."]], x: Float[Array, "bs n_ch n_samples"]
+) -> Float[Array, "bs n_theta"]:
     enc = eqx.combine(params, enc_static)
     return jax.vmap(enc)(x.squeeze(1))
 
@@ -320,7 +341,8 @@ decoder = eqx.nn.MLP(
 )
 # Make the decoder forward call functional (stateless) and ensure it outputs the
 # correct shape for the SCRAPLLoss (bs, n_ch, n_samples)
-dec_fn = lambda theta: jax.vmap(decoder)(theta)[:, None, :]
+def dec_fn(theta: Float[Array, "bs n_theta"]) -> Float[Array, "bs n_ch n_samples"]:
+    return jax.vmap(decoder)(theta)[:, None, :]
 
 # Create an array with batches of input data for `enc_fn` of shape
 # (n_batches, bs, n_ch, n_samples); typically this would be gathered from a dataloader
@@ -335,8 +357,13 @@ scrapl_loss = SCRAPLLoss(
     J_fr=2,
     Q_fr=1,
 )
-# Before warmup, all path sampling probabilities are uniform
+# We see that at initialization, all path sampling probabilities are uniform
 print(f"Uniform path sampling probability: {scrapl_loss.unif_prob:.6f}")
+unif_probs = jnp.full((scrapl_loss.n_paths,), scrapl_loss.unif_prob)
+print(
+    f"[min, max] path sampling probabilities (before warmup): "
+    f"[{float(unif_probs.min()):.6f}, {float(unif_probs.max()):.6f}]"
+)
 
 # Run the warmup. This can be parallelized across paths by specifying different
 # `start_path_idx` and `end_path_idx` subsets on multiple devices.
@@ -373,16 +400,17 @@ number of SCRAPL paths = 7
 unif_prob              = 0.14285714
 
 Uniform path sampling probability: 0.142857
+[min, max] path sampling probabilities (before warmup): [0.142857, 0.142857]
 
 INFO:scrapl.jax.warmup:Starting warmup_lc_hvp for paths [0, 7) of 7, 3 theta, 1 batch(es), 20 iter, tol = 0.01 (vmap_theta = False)
-Theta-IS warmup: 100%|██████████| 7/7 [00:06<00:00,  1.13path/s]
+Theta-IS warmup: 100%|██████████| 7/7 [00:05<00:00,  1.29path/s]
 INFO:scrapl.jax.warmup:Saving theta-IS warmup probabilities to /path/to/scrapl_warmup/probs.npy
 
-[min, max] path sampling probabilities (after warmup): [0.112551, 0.194698]
+[min, max] path sampling probabilities (after warmup): [0.104170, 0.197241]
 
 INFO:scrapl.jax.warmup:Loaded theta-IS warmup from directory:
 	/path/to/scrapl_warmup
-	min prob = 0.112551, max prob = 0.194698
+	min prob = 0.104170, max prob = 0.197241
 ```
 
 > [!NOTE]
@@ -419,11 +447,18 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - The order of the norm used for the distance calculation. Must be at least 1; positive infinity is supported.
   - Defaults to 2 (Euclidean norm).
 - `use_rho_log1p` (bool, optional)
-  - If True, applies log1p scaling to the scattering coefficients (log(1 + x / `log1p_eps`)) before computing the distance. If True, `grad_mult` is no longer necessary and can be set to a value of 1.
+  - If True, applies log1p scaling to the scattering coefficients (log(1 + x / `log1p_eps`)) before computing the distance. If True, the `grad_mult` argument of `scrapl_optimizer` is no longer necessary and can be set to a value of 1.
   - Defaults to False.
 - `log1p_eps` (float, optional)
   - The epsilon value used in the log1p scaling.
   - Defaults to 1e-3.
+
+> [!NOTE]
+> Several PyTorch `SCRAPLLoss` constructor arguments live elsewhere in JAX:
+> - `grad_mult`, `use_p_adam`, `use_p_saga`, `p_adam_b1`, `p_adam_b2`, and `p_adam_eps` are arguments of [`scrapl_optimizer`](#scrapl_optimizer-𝒫-adam-and-𝒫-saga-optax-optimizer).
+> - `n_theta` is inferred from the output of `enc_fn`, and `min_prob_frac` and `eps` are arguments of [`warmup_lc_hvp`](#warmup_lc_hvp-importance-sampling-θ-is-warmup).
+> - `probs_path` is replaced by passing a probability array explicitly via `sample_path(key, probs=...)` or `scrapl_loss(..., key=key, probs=...)`, e.g. `ThetaISResult.probs` from `warmup_lc_hvp` or `load_warmup_from_dir`.
+> - `sample_all_paths_first` is not implemented (see [Known Issues (JAX)](#known-issues-jax)).
 
 
 ### `scrapl_optimizer` (𝒫-Adam and 𝒫-SAGA Optax Optimizer)
@@ -432,7 +467,7 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 
 - `learning_rate` (float, optional)
   - Base learning rate for parameter updates.
-  - Defaults to 1e-3.
+  - Defaults to 1e-4.
 - `weight_decay` (float, optional)
   - L2 weight decay factor added to updates before learning rate scaling.
   - Defaults to 0.01.
@@ -445,9 +480,11 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
   - Defaults to 1e8.
 - `use_p_adam` (bool, optional)
   - If True, enables the 𝒫-Adam algorithm. 
+  - When True, the same `path_idx` passed to `SCRAPLLoss` must be passed to the optimizer's `update()`, and no other Adam or momentum-based optimizer should be chained after `scrapl_optimizer`.
   - Defaults to True.
 - `use_p_saga` (bool, optional)
   - If True, enables the 𝒫-SAGA algorithm. 
+  - When True, the same `path_idx` passed to `SCRAPLLoss` must be passed to the optimizer's `update()`, and no other Adam or momentum-based optimizer should be chained after `scrapl_optimizer`.
   - Defaults to True.
 - `p_adam_b1` (float, optional)
   - β1 Adam hyperparameter for the internal 𝒫-Adam algorithm. 
@@ -539,94 +576,11 @@ For more information about the JTFS and the `J`, `Q1`, `Q2`, `J_fr`, `Q_fr`, `T`
 ![image](https://raw.githubusercontent.com/christhetree/scrapl/main/docs/figs/scrapl_algorithm.png)
 
 
-## Implementation Details (JAX)
-
-### Path Sampling
-
-Each call selects one path for the entire batch and averages its distances over batch and channels.
-Inputs must have matching shapes `(batch, channels, samples)` and use float32 or float64.
-`scrapl_loss.scrapl_keys` maps path indices to `(n2, n_fr)`.
-Keys belong to the caller: the loss stores no random state, counters, or gradient history, and reusing a key reproduces its path.
-PyTorch and JAX do not produce the same path sequence from the same numeric seed.
-
-With uniform sampling, the sampled loss's expectation is the arithmetic mean of the individual path losses.
-Weighted sampling retains the PyTorch implementation's scaling: the chosen path's loss and gradient are unchanged.
-Its expectation is `sum(probs * path_losses)`, so it is not an importance-corrected estimator of the uniform path mean.
-
-### θ-IS Warmup
-
-For curvature estimates `c[path, theta]`, the completed-warmup distribution is:
-
-```text
-scores = maximum(c, eps)
-per_theta = scores / sum(scores, axis=paths)
-probs = (1 - min_prob_frac) * mean(per_theta, axis=theta)
-        + min_prob_frac / n_paths
-```
-
-This matches the PyTorch warmup formula.
-A zero-curvature theta contributes a uniform distribution; if all curvatures are zero, sampling stays uniform.
-`theta_importance_probs(curvatures, min_prob_frac=..., eps=...)` exposes this conversion separately.
-
-Each theta contributes a parameter-gradient vector whose Jacobian need not be symmetric.
-The implementation applies the Jacobian itself with forward-over-reverse differentiation, which is cheaper than PyTorch's grad-of-grad calculation of its transpose; both have the same eigenvalues.
-Power iteration estimates the magnitude of a dominant eigenvalue; it is a heuristic, not a certified Lipschitz bound.
-Inspect `relative_residuals`: they measure `norm(A v - lambda v) / max(norm(A v), eps)` for the last unit iterate.
-A large residual indicates that the estimate has not settled.
-Curvature products are summed over batches, as in PyTorch.
-
-### 𝒫-Adam
-
-`p_adam` keeps separate first and second moments for each path and parameter leaf.
-Its output is a normalized gradient direction, so it should be followed by `optax.scale_by_learning_rate` rather than another Adam optimizer.
-With `curr_t = state.scrapl_t + 1`, `prev_t = state.prev_t_s[path_idx]` and `N = n_paths`, 𝒫-Adam uses `t = curr_t / N` and `delta_t = t - prev_t / N`.
-For each selected moment row:
-
-```text
-m = b1**delta_t * prev_m + (1 - b1**delta_t) * grad
-v = b2**delta_t * prev_v + (1 - b2**delta_t) * grad**2
-m_hat = m / (1 - b1**t)
-v_hat = v / (1 - b2**t)
-grad_hat = m_hat / (sqrt(v_hat) + eps)
-```
-
-Elapsed time is measured in global steps, including steps spent on other paths.
-Only the selected path's moments and timestamp are updated.
-`PAdamState` is a NamedTuple containing `scrapl_t`, `prev_t_s`, `prev_m_s` and `prev_v_s`.
-Moment memory contains two copies of the entire parameter tree per path, which can be substantial for large models and filter banks.
-
-### 𝒫-SAGA
-
-`p_saga` keeps the most recent incoming gradient for each path and parameter leaf.
-Use it on its own or chain it after `p_adam` to match the combined PyTorch implementation.
-For path `i`, incoming gradient `g`, and the stored gradients `h` before the update, the rule is:
-
-```text
-path_counts[i] += 1
-n_paths_seen = sum(path_counts > 0)
-denominator = max(1, n_paths_seen - 1)
-direction = g - h[i] + sum(h, axis=paths) / denominator
-h[i] = g
-```
-
-The initial history is zero, so the first direction equals the incoming gradient.
-Only the selected history row changes; it stores the input to 𝒫-SAGA, including 𝒫-Adam normalization if enabled, rather than the corrected output.
-𝒫-SAGA does not use the sampling probabilities in its correction, which matches PyTorch.
-`PSAGAState` is a NamedTuple with `path_counts` and `prev_path_grads`.
-𝒫-SAGA stores one copy of the entire parameter tree per path, in addition to 𝒫-Adam's two copies when used together.
-
-### Validation
-
-The JAX implementation is tested against the PyTorch implementation (see [Installation](#installation) to run the test suite).
-The tests compare loss values and input gradients for randomly selected paths of the 315-path JTFS used in the examples above, θ-IS curvature estimates and probabilities (including split warmups loaded from a directory), and 𝒫-Adam / 𝒫-SAGA optimizer states over multiple training steps, as well as resuming training from a saved optimizer state.
-Validation currently uses float32 on CPU with Python 3.13, JAX 0.12.0.1, and PyTorch 2.14.1.
-
-
 ## Known Issues (JAX)
 
-- `path_idx` must be a concrete Python integer, so each scattering path is compiled separately the first time it is used inside a JIT-compiled function, and first-call compilation time grows with the number of paths. Applying `vmap` over separate path keys or indices is not supported.
+- `path_idx` must be a concrete Python integer, so each scattering path is compiled separately the first time it is used inside a JIT-compiled function, and first-call compilation time grows with the number of paths.
+- `sample_all_paths_first` (visiting every scattering path once before sampling from the path distribution) is not implemented. A similar effect can be achieved by iterating over `range(scrapl_loss.n_paths)` and passing each index as `path_idx` before switching to `sample_path()`.
 - Per-parameter aggregation of θ-IS curvature estimates (the `agg` argument in PyTorch) is not implemented; all encoder weights are treated as one group.
-- Float64 parity with PyTorch, GPU performance, and compilation costs for large filter banks have not yet been validated.
 
 
 ## Citation
