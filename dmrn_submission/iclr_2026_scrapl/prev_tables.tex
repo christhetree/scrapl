@@ -1,0 +1,145 @@
+\begin{table}[t]
+\centering
+\caption{TBD.}
+\label{tab:gran_test_results}
+\sisetup{
+    reset-text-series = false, 
+    text-series-to-math = true, 
+    mode=text,
+    tight-spacing=true,
+    table-format=1.2,
+    table-number-alignment=center,
+    separate-uncertainty = true,
+    detect-weight = true,
+    detect-inline-weight = math,
+}
+\setlength{\tabcolsep}{3.3pt}
+\begin{tabular}{
+    l
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+}
+    \toprule
+    \bf{Method} & \multicolumn{2}{c}{\bm{$\theta_{\text{synth}}$}} & \multicolumn{2}{c}{\bm{$\theta_{\text{density}}$}} & \multicolumn{2}{c}{\bm{$\theta_{\text{slope}}$}}\\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+           & {$L_1 \downarrow$} & {$L_2 \downarrow$} & {$L_1 \downarrow$} & {$L_2 \downarrow$} & {$L_1 \downarrow$} & {$L_2 \downarrow$} \\
+    \midrule
+    SCRAPL        &     0.074(0.013) &     0.010(0.005) &     0.070(0.009) &     0.008(0.003) &     0.077(0.019) &     0.011(0.007) \\
+    ASCRAPL       &     0.066(0.004) &     0.007(0.001) &     0.073(0.006) &     0.008(0.001) &     0.059(0.007) &     0.006(0.002) \\
+    JTFS*         & \bf 0.042(0.000) & \bf 0.004(0.000) & \bf 0.066(0.000) & \bf 0.007(0.000) & \bf 0.019(0.000) & \bf 0.001(0.000) \\
+    MSS           &     0.277(0.004) &     0.105(0.003) &     0.312(0.008) &     0.131(0.006) &     0.242(0.000) &     0.078(0.000) \\
+    MSS Rev.      &     0.311(0.019) &     0.144(0.019) &     0.376(0.040) &     0.205(0.040) &     0.246(0.003) &     0.083(0.003) \\
+    Rand. MSS     &     0.195(0.004) &     0.056(0.002) &     0.149(0.008) &     0.032(0.003) &     0.242(0.001) &     0.080(0.002) \\
+    MS-CLAP       &     0.166(0.008) &     0.081(0.005) &     0.082(0.009) &     0.011(0.002) &     0.250(0.008) &     0.152(0.008) \\
+    PANNs         &     0.159(0.004) &     0.073(0.003) &     0.080(0.004) &     0.010(0.001) &     0.238(0.005) &     0.136(0.005) \\
+    \midrule
+    P-Loss        &     0.021(0.000) &     0.001(0.000) &     0.025(0.000) &     0.001(0.000) &     0.016(0.000) &     0.000(0.000) \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
+
+
+
+
+
+
+
+
+\begin{table}[t]
+\centering
+\caption{TBD.}
+\label{tab:chirp_test_results}
+\sisetup{
+    reset-text-series = false, 
+    text-series-to-math = true, 
+    mode=text,
+    tight-spacing=false,
+    table-format=1.2,
+    table-number-alignment=center,
+    separate-uncertainty = true,
+    detect-weight = true,
+    detect-inline-weight = math,
+}
+\setlength{\tabcolsep}{4.1pt}
+\begin{tabular}{
+    lcc
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+    S[table-format=1.3(1.3)]
+}
+    \toprule
+    \bf{Initialization} & \multicolumn{2}{c}{\bf{Synth Config.}} & \multicolumn{2}{c}{\bm{$\theta_{\text{AM}}$}} & \multicolumn{2}{c}{\bm{$\theta_{\text{FM}}$}}\\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+    \bf{Heuristic}   & {$\theta_{\text{AM}}$ (Hz)} & {$\theta_{\text{FM}}$ ($\frac{\text{oct}}{\text{s}}$)} & {$L_1 \downarrow$} & {$L_2 \downarrow$} & {$L_1 \downarrow$} & {$L_2 \downarrow$} \\
+    \midrule
+    Uniform   & $1.0 - 2.0$ & $0.5 - 1.0$  &     0.124(0.010) &     0.026(0.004) &     0.155(0.018) &     0.039(0.008) \\
+    Adaptive  & $1.0 - 2.0$ & $0.5 - 1.0$  & \bf 0.078(0.007) & \bf 0.011(0.002) & \bf 0.078(0.011) & \bf 0.012(0.003) \\
+    \midrule
+    Uniform   & $1.0 - 2.0$ & $2.0 - 4.0$  &     0.111(0.020) &     0.021(0.007) &     0.069(0.011) &     0.008(0.003) \\
+    Adaptive  & $1.0 - 2.0$ & $2.0 - 4.0$  & \bf 0.055(0.004) & \bf 0.005(0.001) & \bf 0.044(0.003) & \bf 0.003(0.000) \\
+    \midrule
+    Uniform   & $2.8 - 8.4$ & $2.0 - 4.0$  &     0.122(0.022) &     0.026(0.009) &     0.238(0.021) &     0.103(0.016) \\
+    Adaptive  & $2.8 - 8.4$ & $2.0 - 4.0$  & \bf 0.055(0.003) & \bf 0.005(0.001) & \bf 0.048(0.005) & \bf 0.005(0.002) \\
+    \midrule
+    Uniform   & $2.8 - 8.4$ & $4.0 - 12.0$ &     0.108(0.012) &     0.019(0.004) &     0.096(0.020) &     0.016(0.008) \\
+    Adaptive  & $2.8 - 8.4$ & $4.0 - 12.0$ & \bf 0.082(0.012) & \bf 0.011(0.003) & \bf 0.082(0.011) & \bf 0.011(0.004) \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+
+
+
+
+\begin{table}[t]
+\centering
+\caption{Convergence rate (CR) of 20 training runs.}
+\label{tab:chirp_convergence}
+\sisetup{
+    reset-text-series = false, 
+    text-series-to-math = true, 
+    mode=text,
+    tight-spacing=false,
+    table-format=1.2,
+    table-number-alignment=center,
+    separate-uncertainty = true,
+    detect-weight = true,
+    detect-inline-weight = math,
+}
+% \setlength{\tabcolsep}{4.1pt}
+\begin{tabular}{
+    lcc
+    S[table-format=3.0]
+    S[table-format=4.0(3.0)]
+    S[table-format=3.0]
+    S[table-format=4.0(3.0)]
+}
+    \toprule
+    \bf{Sampling} & \multicolumn{2}{c}{\bf{Synth Config.}} & \multicolumn{2}{c}{\bm{$\theta_{\text{AM}}$}} & \multicolumn{2}{c}{\bm{$\theta_{\text{FM}}$}}\\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+    \bf{Method}   & {$\theta_{\text{AM}}$ (Hz)} & {$\theta_{\text{FM}}$ ($\frac{\text{oct}}{\text{s}}$)} & {CR $\uparrow$} & {$L_1 < 0.10$ \space Steps $\downarrow$} & {CR $\uparrow$} & {$L_1 < 0.10$ \space Steps $\downarrow$} \\
+    \midrule
+    Uniform   & $1.0 - 2.0$ & $0.5 - 1.0$  &      60\% &     3944(342) &      45\% &     4064(372) \\
+    Adaptive  & $1.0 - 2.0$ & $0.5 - 1.0$  & \bf 100\% & \bf 2002(324) & \bf 100\% & \bf 3134(492) \\
+    \midrule
+    Uniform   & $1.0 - 2.0$ & $2.0 - 4.0$  & \bf 100\% &     2203(135) & \bf 100\% &     1536(194) \\
+    Adaptive  & $1.0 - 2.0$ & $2.0 - 4.0$  & \bf 100\% & \bf 1099(173) & \bf 100\% & \bf  768(118) \\
+    \midrule
+    Uniform   & $2.8 - 8.4$ & $2.0 - 4.0$  &      95\% &     3254(250) &       0\% &           N/A \\
+    Adaptive  & $2.8 - 8.4$ & $2.0 - 4.0$  & \bf 100\% & \bf 1925(165) & \bf 100\% & \bf 2966(210) \\
+    \midrule
+    Uniform   & $2.8 - 8.4$ & $4.0 - 12.0$ & \bf 100\% &     3096(334) & \bf  95\% &     3208(235) \\
+    Adaptive  & $2.8 - 8.4$ & $4.0 - 12.0$ &      95\% & \bf 2253(218) & \bf  95\% & \bf 2178(173) \\
+    \bottomrule
+\end{tabular}
+\end{table}

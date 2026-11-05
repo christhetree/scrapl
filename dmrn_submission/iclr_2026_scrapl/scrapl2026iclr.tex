@@ -1,0 +1,1424 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2026_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+
+% Manually added packages
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{xspace}
+\newcommand*{\exempligratia}{e.g.\@\xspace}
+\newcommand*{\etcaetera}{etc.\@\xspace}
+\newcommand*{\idest}{i.e.\@\xspace}
+\newcommand*{\respectively}{resp.\@\xspace}
+\newcommand*{\versus}{vs.\@\xspace}
+\newcommand\Fscore{$F_1$-score}
+
+\usepackage{mathptmx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{bm,bbold}
+\theoremstyle{plain}
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{lem}[thm]{Lemma}
+\newtheorem{cor}[thm]{Corollary}
+
+\theoremstyle{definition}
+\newtheorem{defn}[thm]{Definition}
+\newtheorem*{ex}{Example}
+\newtheorem{prop}[thm]{Proposition}
+
+\theoremstyle{remark}
+\newtheorem*{note}{Note}
+\newtheorem*{rem}{Remark}
+
+\DeclareMathOperator{\Card}{card}
+
+\renewcommand{\qedsymbol}{$\blacksquare$}
+\usepackage{mathtools}
+\usepackage{nicematrix}
+\usepackage{enumitem}
+\usepackage{adjustbox}
+\usepackage{stackengine}
+\usepackage{url}
+\urlstyle{same}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, calc, fit, positioning, shapes.geometric, backgrounds}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% Manually added
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+\usepackage{textcomp}
+\usepackage{float}   
+\usepackage{tcolorbox}
+
+\definecolor{forestgreen}{rgb}{0.18,0.55,0.34}
+\newcommand{\vincent}[1]{\textbf{\textcolor{forestgreen}{#1}}}
+
+
+\title{SCRAPL: Scattering Transform with Random Paths for Machine Learning\vspace{-8pt}}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{
+  Christopher Mitcheltree$^\flat$ \hspace{3.5pt} Vincent Lostanlen$^\sharp$ \hspace{3.5pt} Emmanouil Benetos$^\flat$ \hspace{3.5pt} Mathieu Lagrange$^\sharp$
+  \vspace{8pt}\\
+  $^\flat$Centre for Digital Music, Queen Mary University of London, UK
+  \vspace{1pt}\\
+  \texttt{\{c.mitcheltree, emmanouil.benetos\}@qmul.ac.uk}
+  \vspace{6pt}\\
+  $^\sharp$Nantes Université, École Centrale Nantes, CNRS, LS2N, UMR 6004, France
+  \vspace{1pt}\\
+  \texttt{\{vincent.lostanlen, mathieu.lagrange\}@ls2n.fr}
+  \vspace{-12pt}
+}
+
+% \author{Christopher Mitcheltree \\
+%         Centre for Digital Music \\ Queen Mary University of London \\
+%         327 Mile End Rd, London, UK, E1 4NS \\
+%         \texttt{c.mitcheltree@qmul.ac.uk} \\
+%         \vspace{-10pt}
+%         \And
+%         Vincent Lostanlen \\
+%         Nantes Université, École Centrale Nantes \\
+%         CNRS, LS2N, UMR 6004 \\
+%         F-44000, Nantes, France \\
+%         \texttt{vincent.lostanlen@ls2n.fr} \\
+%         \vspace{-10pt}
+%         \And
+%         Emmanouil Benetos \\
+%         Centre for Digital Music \\ Queen Mary University of London \\
+%         327 Mile End Rd, London, UK, E1 4NS \hspace{44pt} \\
+%         \texttt{emmanouil.benetos@qmul.ac.uk} \\
+%         \And
+%         Mathieu Lagrange \\
+%         Nantes Université, École Centrale Nantes \\
+%         CNRS, LS2N, UMR 6004 \\
+%         F-44000, Nantes, France \\
+%         \texttt{mathieu.lagrange@ls2n.fr} \\
+% }
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\vspace{-4pt}
+The Euclidean distance between wavelet scattering transform coefficients (known as \emph{paths}) provides informative gradients for perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing.  
+However, these transforms are computationally expensive when employed as differentiable loss functions for stochastic gradient descent due to their numerous paths, which significantly limits their use in neural network training.
+Against this problem, we propose ``\textbf{Sc}attering transform with \textbf{Ra}ndom \textbf{P}aths for machine \textbf{L}earning'' (SCRAPL): a stochastic optimization scheme for efficient evaluation of multivariable scattering transforms.
+We implement SCRAPL for the joint time–frequency scattering transform (JTFS) which demodulates spectrotemporal patterns at multiple scales and rates, allowing a fine characterization of intermittent auditory textures.
+We apply SCRAPL to differentiable digital signal processing (DDSP), specifically, unsupervised sound matching of a granular synthesizer and the Roland TR-808 drum machine.
+We also propose an initialization heuristic based on importance sampling, which adapts SCRAPL to the perceptual content of the dataset, improving neural network convergence and evaluation performance.
+We make our code and audio samples available and provide SCRAPL as a Python package.
+\end{abstract}
+
+
+\vspace{-8pt}
+\section{Introduction}
+\label{sec:intro}
+\vspace{-4pt}
+A scattering transform (ST) is a wavelet-based nonlinear operator which decomposes a high-resolution input  $\boldsymbol{x}$ into a collection $\Phi\boldsymbol{x}$ of low-resolution coefficients, known as \emph{paths} \citep{mallat2012group}.
+Without loss of generality, let us consider a two-layer multivariable ST of a time-domain signal $\boldsymbol{x}(t)$:
+\begin{equation}
+\Phi\boldsymbol{x}(p, t,\lambda) =
+\rho\Big( \Big( \Big\vert \vert \mathbf{W}\boldsymbol{x}\vert \circledast \boldsymbol{\Psi}_{p} \Big\vert \circledast \boldsymbol{\Psi}_0 \Big)(t, \lambda) \Big).
+\label{eq:def-Sx}
+\end{equation}
+In the equation above, $\mathbf{W}$ is a wavelet transform; the vertical bars denote complex modulus; the circled asterisk $\circledast $ denotes a multivariable convolution over time $t$ and wavelet scale $\lambda$; $\boldsymbol{\Psi}$ is a multivariable wavelet  filterbank which is indexed by path $p$; $\boldsymbol{\Psi}_0$, i.e., $\boldsymbol{\Psi}_p$ with $p=0$ is a multivariable low-pass filter; and $\rho$ is a pointwise nonlinearity, e.g., path normalization and logarithmic transformation.
+
+The design of the filterbank $\boldsymbol{\Psi}$ aims at a tradeoff between three properties: invariance to rigid motion, stability to small deformations, and separation of sparse patterns \citep{mallat2016understanding}.
+In speech and audio processing, examples of such $\boldsymbol{\Psi}$ include ``plain'' time ST \citep{anden2014deep}, joint time--frequency scattering (JTFS) \citep{anden2014deep}, and spiral ST \citep{lostanlen2016wavelet}.
+In computer vision, examples include ``plain'' 2-D ST \citep{bruna2013invariant}, joint roto-translation ST \citep{sifre2013rotation}, and scalo-roto-translation ST \citep{oyallon2014generic}.
+
+The squared Euclidean distance between scattering coefficients, or \emph{ST distance} for short, is:
+\begin{equation}
+d_{\Phi}(\boldsymbol{x},\boldsymbol{\tilde{x}}) =
+\sum_{p=0}^{P-1} \sum_{t=0}^{T-1} \sum_{\lambda=0}^{\Lambda-1}\Big\vert \Phi\boldsymbol{x}(p,t,\lambda) - \Phi\boldsymbol{\tilde{x}}(p,t,\lambda) \Big\vert^2,
+\label{eq:scattering-distance}
+\end{equation}
+where $P$ is the number of paths; $T$ is the number of time samples; and $\Lambda$ is the number of scales.
+Behavioral studies suggest that ST distance is a good predictor of dissimilarity judgments between isolated sounds, for suitably chosen $\boldsymbol{\Psi}$ and $\rho$  \citep{patil2012music,lostanlen2021time,tian2025assessing}.
+Relatedly, neurophysiology studies suggest that JTFS is a suitable idealized model of spectrotemporal receptive fields in the auditory cortex of humans \citep{norman2018neural} and nonhuman mammals \citep{kowalski1996analysis}.
+These findings motivate the use of JTFS as part of a differentiable loss function for neural audio models \citep{vahidi2023mesostructures}.%, analogously to 2-D ST for inverse problems in imaging \citep{bruna2016super}.
+
+As an illustration, let $\boldsymbol{x}$ be a fixed reference and $\boldsymbol{\tilde{x}}=F_{\boldsymbol{x}}(\boldsymbol{w})$ be its reconstruction by an autoencoder $F$ with trainable weights $\boldsymbol{w}$.
+Denoting the set of path indices by $\mathcal{P}=\{0,\ldots,P-1\}$ and the vector of all time--frequency entries $\Phi\boldsymbol{x}(p,t,\lambda)$ for each path $p\in\mathcal{P}$ by $\phi_p(\boldsymbol{x})$, the ST loss function  writes as: 
+\begin{equation}
+\mathcal{L}^{\Phi}_{\boldsymbol{x}}(\boldsymbol{\tilde{x}}) = 
+\dfrac{1}{P}
+\sum_{p=0}^{P-1} \mathcal{L}^{\phi_p}_{\boldsymbol{x}}(\boldsymbol{\tilde{x}})
+\textrm{\quad where \quad}
+\forall p\in\mathcal{P},\;
+\mathcal{L}^{\phi_p}_{\boldsymbol{x}}(\boldsymbol{\tilde{x}}) =
+P
+\big\Vert
+\phi_p(\boldsymbol{x}) - \phi_p(\boldsymbol{\tilde{x}})
+\big\Vert^2.
+\label{eq:L-Phi}
+\end{equation}
+\vspace{-9pt}
+
+Unfortunately, $\mathcal{L}^{\Phi}_{\boldsymbol{x}}(\boldsymbol{\tilde{x}})$ and its gradient $\boldsymbol{\nabla}\mathcal{L}^{\Phi}_{\boldsymbol{x}}(\boldsymbol{\tilde{x}})$ are expensive in memory and in operations.
+Certainly, algorithmic refinements such as FFT-based filtering, multirate processing, and depth-first search can reduce the cost of an ST path \citep{oyallon2018scattering}.
+Yet, the need to traverse all $P$ paths remains an obstacle to the applicability of multivariable ST for gradient-based learning at scale.
+
+In this article, we aim to accelerate the training of an autoencoder $F$ whose loss is the ST distance between reference and reconstruction, and so over a finite corpus $\mathcal{X}=\{\boldsymbol{x}_0,\ldots,\boldsymbol{x}_{N-1}\}$. Formally:
+\begin{equation}
+\boldsymbol{w}^{\star} = \arg\min_{\boldsymbol{w}} \dfrac{1}{N} \sum_{n=0}^{N-1} \left(\mathcal{L}_{\boldsymbol{x}_n}^{\Phi}\circ F_{\boldsymbol{x}_n}\right)(\boldsymbol{w}).
+\end{equation}
+\vspace{-9pt}
+
+Given the decomposition in Equation \ref{eq:L-Phi}, a naïve idea would be to replace each term $\mathcal{L}_{\boldsymbol{x}_n}^{\Phi}$ in the equation above by some per-path loss $\mathcal{L}_{\boldsymbol{x}_n}^{\phi_{p}}$, where the $p$'s would be drawn independently and uniformly at random in the path set $\mathcal{P}$.
+This is a crude form of stochastic approximation \citep{benveniste2012adaptive} which is motivated by the tree-like structure of ST: neglecting the overhead of the first layer ($\vert\mathbf{W}\boldsymbol{x}\vert$), the computation of a single-path gradient $\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}_n}^{\phi_{p}}$ is roughly $P$ times more efficient than that of a full ST gradient $\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}_n}^{\Phi}$.
+However, this speedup comes at the detriment of numerical precision: a deterministic quantity has been replaced by an estimator whose variance may be impractically large.
+
+``\textbf{Sc}attering transform with \textbf{Ra}ndom \textbf{P}aths for machine \textbf{L}earning'' (SCRAPL) is our proposed solution to this problem.
+Acknowledging that each single-path gradient makes for an inexpensive but noisy learning signal, we stabilize it via a combination of three stochastic optimization techniques and apply an architecture-informed importance sampling heuristic.
+Our contributions are:
+\vspace{-2pt}
+\begin{enumerate}
+    \item \textbf{Stochastic approximation of scattering transform} through uniform sampling of paths.
+    \item \textbf{Path-wise adaptive moment estimation} ($\mathcal{P}$-Adam for short): an extension of the Adam algorithm \citep{kingma2014adam} which accounts for the non-i.i.d. nature of ST paths.
+    \item \textbf{Path-wise stochastic average gradient with acceleration} ($\mathcal{P}$-SAGA for short): a variant of the SAGA algorithm \citep{defazio2014saga} which keeps a memory of previous gradient values across all paths $p$.
+    \item \textbf{$\theta$-importance sampling}: a parallelizable initialization heuristic that supplies auxiliary information to the stochastic optimizer by sampling paths $p$ in proportion to the typical rate of change of the gradient in the optimization landscape.
+\end{enumerate}
+\vspace{-2pt}
+
+Our main empirical finding is that SCRAPL accomplishes a favorable tradeoff between goodness of fit and computational efficiency on unsupervised sound matching, i.e., a nonlinear inverse problem in which the forward operator implements an audio synthesizer.
+In the context of differentiable digital signal processing (DDSP), the state-of-the-art perceptual loss function for this task is multiscale spectral loss (MSS, \cite{yamamoto2020parallel}, \cite{engel2020ddsp}).
+However, the gradient of MSS is uninformative when input and reconstruction are misaligned or when the synthesizer controls involve spectrotemporal modulations \citep{vahidi2023mesostructures}.
+Taking advantage of the stability guarantees of JTFS, SCRAPL expands the class of synthesizers which can be effectively decoded via DDSP.
+
+
+\begin{figure}
+    \begin{center}
+    \includegraphics[width=1.0\linewidth, trim=14pt 14pt 14pt 14pt, clip]{figures/relative_param_error_vs_computation.pdf}
+    \end{center}
+    \vspace{-15pt}
+    \caption{
+    Mean average synthesizer parameter error (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task.
+    Both axes are rescaled by the performance of a supervised model with the same number of parameters.
+    Whiskers denote 95\% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.}
+    \label{fig:gran_scatter_plot}
+\end{figure}
+
+
+Figure \ref{fig:gran_scatter_plot} illustrates one of our experiments: unsupervised sound matching for a nondeterministic granular synthesizer. 
+On one hand, models based on MSS and other state-of-the-art perceptual losses are computationally efficient but inaccurate.
+On the other hand, JTFS-based models are five times more accurate but twenty five times more costly.
+SCRAPL is a new point on this Pareto front: it is within a factor two of JTFS in terms of accuracy while being within a factor two of MSS in terms of runtime, making it suitable for large-scale DDSP.
+Relatedly, SCRAPL is also more memory-efficient than JTFS, thus reducing overhead between CPU/GPU cores and allowing for a larger batch size.
+
+
+\section{Related work}
+\label{sec:related_work}
+
+% Correlated ST
+The guiding intuition behind SCRAPL is that natural signals and images exhibit strong correlations across ST paths.
+This fact has been observed empirically since the onset of ST research \citep{bruna2013invariant,anden2011multiscale} and aligns with earlier work on texture modeling based on pairwise correlations between wavelet modulus coefficients \citep{portilla2000parametric}.
+
+% Texture synth, differentiable ST
+Visual and auditory textures, understood as stationary random fields,  play a key role in applied ST research.
+ST features outperform short-term Fourier features (e.g., MSS) in their ability to characterize intermittency in non-Gaussian textures \citep{muzy2015intermittent}.
+Texture resynthesis by gradient descent of ST loss has been applied to such diverse settings as computer music creation \citep{lostanlen2019fourier} and the study of the cosmic microwave background \citep{delouis2022non}.
+
+% Generative models. DNN
+The democratization of differentiable programming toolkits (e.g., TensorFlow, PyTorch, JAX) has greatly advanced the flexibility of gradient backpropagation in 
+``hybrid'' scattering--neural networks involving learnable and non-learnable modules.
+\cite{angles2018generative} have built a hybrid scattering--GAN model for image generation, in which ST distance plays the role of a discriminator.
+
+% Pruned ...
+To our knowledge, the closest prior work to SCRAPL is the pruned graph scattering transform (pGST) of
+\cite{ioannidis2020pruned}, a method which reduces the complexity of ST by pruning the path set $\mathcal{P}$ down to a proper subset $\mathcal{P}'\subset\mathcal{P}$, based on a graph-spectrum-inspired criterion.
+Although both pGST and SCRAPL share a similar overarching goal, let us point out that pGST is a feature selection method: the cardinality of $\mathcal{P}'$ is typically $\sim 10\%$ that of $\mathcal{P}$ and $\mathcal{P}'$ is kept fixed across training examples and across epochs.
+In comparison, SCRAPL performs a more radical pruning, down to a single path ($\Card\mathcal{P}'=1$), while harnessing dedicated techniques in stochastic optimization ($\mathcal{P}$-Adam and $\mathcal{P}$-SAGA) to reduce the variance of ST loss during gradient backpropagation.
+
+
+\section{Methods}
+\label{sec:methods}
+
+\subsection{Stochastic Approximation of Scattering Transform Loss Gradient}
+\label{ssec:stochastic_approx}
+
+The proposition below, proven in Appendix~\ref{app:scrapl_proof}, shows that if paths are drawn uniformly at random, the stochastic approximation in SCRAPL is unbiased: in other words, the expected value of the stochastic gradient of per-path loss is equal to the gradient of full ST loss.
+
+
+\begin{prop}
+Let $\Phi = (\phi_{p})_{0}^{P-1}$ be a scattering transform with $P$ paths.
+Given a signal or image $\boldsymbol{x}$, let $F_{\boldsymbol{x}}$ be an autoencoder operating on $\boldsymbol{x}$ and let $\mathcal{L}_{\boldsymbol{x}}^{\Phi}$ be the associated ST reconstruction loss.
+Let $\mathcal{U}_P$ be the uniform distribution over $\mathcal{P}=\{0, \ldots,P-1\}$.
+One has, for every weight vector $\boldsymbol{w}$:
+\begin{equation}
+\mathbb{E}_{z\sim\mathcal{U}_P}\big[\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\phi_z}\circ F_{\boldsymbol{x}})(\boldsymbol{w})\big] = \boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\Phi}\circ F_{\boldsymbol{x}})(\boldsymbol{w}).
+\end{equation}
+\label{prop:unbiased}
+\end{prop}
+
+
+\vspace{-15pt}
+Although a uniform sampling of paths matches the intuition of approximating the ST gradient in expectation, we will see that this may be suboptimal.
+The $\theta$-importance sampling method, which we will present in Section \ref{ssec:theta_importance_sampling}, does not satisfy the hypothesis of Proposition \ref{prop:unbiased}; yet, it consistently outperforms uniform sampling as part of SCRAPL.
+The design of biased stochastic approximation schemes is an active topic in machine learning research \citep{dieuleveut2023stochastic}.
+
+
+\subsection{$\mathcal{P}$-Adam: Path-wise Adaptive Moment Estimation}
+\label{ssec:p-adam}
+The key idea behind the Adam optimizer is to smooth the successive realizations of the stochastic gradient, here denoted by $\boldsymbol{g}$, via autoregressive estimates of its first- and second-order element-wise moments, denoted by $\boldsymbol{m}$ and $\boldsymbol{v}$ \citep{kingma2014adam}.
+However, the smoothing technique in Adam is ineffective for SCRAPL because the gradients of path-wise ST losses are not identically distributed.
+Against this problem, we propose to maintain $P$ estimates of path-wise moments ($\mathcal{P}$-Adam):
+\begin{align}
+\boldsymbol{m}_p &\leftarrow \beta_1^{(k-\tau_p)/P} \boldsymbol{m}_p + (1 - \beta_{1}^{(k-\tau_p)/P}) \boldsymbol{g}\\
+\boldsymbol{v}_p &\leftarrow \beta_2^{(k-\tau_p)/P} \boldsymbol{v}_p + (1 - \beta_{2}^{(k-\tau_p)/P}) (\boldsymbol{g} \odot \boldsymbol{g}),
+\end{align}
+where $k$ is the current iteration number, $\tau_p$ is the iteration when path $p$ was last drawn; $\beta_1$ and $\beta_2$ are hyperparameters; and the circled dot denotes element-wise multiplication of vectors.
+The exponent $(k-\tau_p)/P$ adapts the time constant of smoothing to the recency of the previous estimate.
+
+The second step in $\mathcal{P}$-Adam, following classical Adam, consists of bias correction and the ratio of debiased first-order moment to stable square root of debiased second-order moment:
+\begin{equation}
+\boldsymbol{g}_{\mathrm{current}} =
+\dfrac{\dfrac{\boldsymbol{m}_p}{1-\beta_1^{k/P}}}{\sqrt{\varepsilon+\dfrac{\boldsymbol{v}_p}{1-\beta_2^{k/P}}}},
+\end{equation}
+where we have adapted the original exponents of Adam ($\beta_1^{k}$, $\beta_2^{k}$) to account for the number of paths.
+
+
+\subsection{$\mathcal{P}$-SAGA: Path-wise Stochastic Average Gradient with Acceleration}
+\label{ssec:saga}
+The stochastic average gradient (SAG) algorithm has the potential to accelerate stochastic gradient descent in the context of the minimization of finite sums \citep{schmidt2017minimizing}.
+Although this sum is typically over training examples in neural network training, in SCRAPL, Equation~\ref{eq:L-Phi} is a sum over paths for a given example $\boldsymbol{x}$.
+With this observation in mind, we propose $\mathcal{P}$-SAGA, a path-wise version of SAG with acceleration (SAGA, \cite{defazio2014saga}).
+We maintain a memory of the last $\mathcal{P}$-Adam updates over each path, denoted by $(\boldsymbol{\hat{g}}_p)_0^{P-1}$; and the set of paths previously visited, denoted by $\Gamma$.
+Given a learning rate $\alpha_k$ at iteration $k$, the $\mathcal{P}$-SAGA update is:
+\begin{equation}
+\boldsymbol{w} \leftarrow \boldsymbol{w} -
+\alpha_k \left(
+\boldsymbol{g}_{\mathrm{current}} -
+\boldsymbol{\hat{g}}_p +
+\dfrac{\sum_{\gamma\in\Gamma} \boldsymbol{\hat{g}}_{\gamma}}{\max(1,\Card \Gamma)}
+\right).
+\end{equation}
+Unlike the original SAG and SAGA algorithms, $\mathcal{P}$-SAGA's additional memory footprint is proportional to $P$, not the size of the dataset $N$, making it suitable for neural network training and real-world optimization tasks like our experiments in Section~\ref{sec:experiments}.
+We also note that $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA introduce no additional hyperparameters over the standard Adam optimizer.
+Algorithm~\ref{alg:scrapl} summarizes SCRAPL with both $\mathcal{P}$-Adam and $\mathcal{P}$-SAGA enabled.
+
+
+\begin{algorithm}[t]
+\caption{
+``\textbf{Sc}attering transform with \textbf{Ra}ndom \textbf{P}aths for machine \textbf{L}earning'' (SCRAPL).
+The pseudo-code below describes SCRAPL with a batch size equal to one, without loss of generality.
+}
+\label{alg:scrapl}
+\begin{algorithmic}
+\REQUIRE $\Phi=(\phi_p)_{0}^{P-1}$: Scattering transform (ST) with $P$ paths
+\REQUIRE $\pi$: Categorical distribution over the path set $\mathcal{P}=\{0,\ldots,P-1\}$
+\REQUIRE $F$: Autoencoder with trainable parameters $\boldsymbol{w}$  
+\REQUIRE $\boldsymbol{w}$: Neural network weights at initialization
+\REQUIRE $\beta_1, \beta_2,\varepsilon$: Adam hyperparameters  
+\REQUIRE $(\alpha_k)_1^{K}$: Learning rate schedule
+\STATE $\Gamma \leftarrow \emptyset$
+\FOR{$p$ in $\{0,\ldots, P-1\}$}
+  \STATE $\tau_p \leftarrow 0$
+  \STATE $\boldsymbol{m}_p \leftarrow \boldsymbol{0}$ % dimension = len(F)
+  \STATE $\boldsymbol{v}_p \leftarrow \boldsymbol{0}$ % dimension = len(F)
+  \STATE $\boldsymbol{\hat{g}}_p \leftarrow \boldsymbol{0}$ % dimension = len(P)
+\ENDFOR
+\FOR{$k$ in $\{1,\ldots, K\}$}
+    \colorbox{red!10}{
+    \begin{minipage}{0.7128\linewidth}
+    \STATE $n \leftarrow \textrm{draw an integer uniformly at random in }\{0,\ldots,N-1\}$
+    \STATE $p \leftarrow \textrm{draw an integer at random in }\{0,\ldots,P-1\}\textrm{ according to }\pi$ 
+    \STATE $\mathcal{L}(\boldsymbol{w}) \leftarrow P \big\Vert \phi_p(\boldsymbol{x}_n) - (\phi_p \circ F_{\boldsymbol{w}})(\boldsymbol{x}_n)\big\Vert_2^2$
+    \STATE $\boldsymbol{g} \leftarrow \boldsymbol{\nabla}\mathcal{L}(\boldsymbol{w})$
+    \end{minipage}
+    \COMMENT{Stochastic approx.}
+    }
+    \colorbox{blue!10}{
+    \begin{minipage}{0.806\linewidth}
+    % PWA
+    \STATE $\boldsymbol{m}_p \leftarrow \beta_1^{(k-\tau_p)/P} \boldsymbol{m}_p + (1 - \beta_{1}^{(k-\tau_p)/P}) \boldsymbol{g}$
+    \STATE $\boldsymbol{v}_p \leftarrow \beta_2^{(k-\tau_p)/P} \boldsymbol{v}_p + (1 - \beta_{2}^{(k-\tau_p)/P}) (\boldsymbol{g} \odot \boldsymbol{g})$
+    \STATE $\boldsymbol{\hat{m}} \leftarrow \boldsymbol{m}_p / (1 - \beta_1^{k/P})$
+    \STATE $\boldsymbol{\hat{v}} \leftarrow \boldsymbol{v}_p / (1 - \beta_2^{k/P})$
+    \STATE $\boldsymbol{g}_{\mathrm{current}} \leftarrow \boldsymbol{\hat{m}} / \sqrt{\varepsilon+ \boldsymbol{\hat{v}}}$
+    \STATE $\tau_{p} \leftarrow k$
+    \end{minipage}
+    \COMMENT{$\mathcal{P}$-Adam}
+    }
+
+    \colorbox{green!10}{
+    \begin{minipage}{0.8\linewidth}
+    % SAGA
+    \STATE $\boldsymbol{g}_{\mathrm{avg}} \leftarrow \dfrac{1}{\max(1,\Card\Gamma)} \sum_{\gamma\in\Gamma} \boldsymbol{\hat{g}}_\gamma$
+    \STATE $\boldsymbol{g}_{\mathrm{SAGA}} \leftarrow \boldsymbol{g}_{\mathrm{current}} - \boldsymbol{\hat{g}}_p + \boldsymbol{g}_{\mathrm{avg}}$
+    \STATE $\boldsymbol{w} \leftarrow \boldsymbol{w} - \alpha_k \boldsymbol{g}_{\mathrm{SAGA}}$
+    \STATE $\boldsymbol{\hat{g}}_p \leftarrow \boldsymbol{g}_{\mathrm{current}}$
+    \STATE $\Gamma \leftarrow \Gamma \cup \{ p \}$
+    \end{minipage} \COMMENT{$\mathcal{P}$-SAGA}
+    }
+\ENDFOR
+\RETURN $\boldsymbol{w}$
+\end{algorithmic}
+\end{algorithm}
+
+
+\subsection{$\theta$-Importance Sampling}
+\label{ssec:theta_importance_sampling}
+
+We now consider the important special case of differentiable digital signal processing (DDSP, see Section \ref{sec:intro}), in which the autoencoder composes a non-learnable decoder, typically a synthesizer, with a learned encoder: i.e., $F_{\boldsymbol{x}} = (D\circ E_{\boldsymbol{x}})$ with $E_{\boldsymbol{x}}(\boldsymbol{w}) = \boldsymbol{\tilde{\theta}}$ and $D(\boldsymbol{\tilde{\theta}}) = \boldsymbol{\tilde{x}} $~\citep{engel2020ddsp}.
+We assume both $D$ and $E_{\boldsymbol{x}}$ to be differentiable with respect to their inputs, but $D$ is not necessarily deterministic.
+We denote by $U$ the dimension of the parameter space $\boldsymbol{\theta}$; i.e., the output space of $E_{\boldsymbol{x}}$ and input space of $D$.
+
+A known drawback of DDSP is that the optimization landscape of spectral loss in parameter space (i.e., of $\mathcal{L}_{\boldsymbol{x}}^{\Phi}\circ D$) may not coincide with that of supervised parameter loss (i.e., Euclidean distance to $\boldsymbol{\theta}$,
+% , $\vert \boldsymbol{\theta} - \boldsymbol{\tilde{\theta}} \vert^2$
+ also known as P-loss) \citep{hayes2024review}.
+Against this drawback, we propose a method named $\theta$-importance sampling ($\theta$-IS), which constructs a categorical distribution $\pi$ over the path space $\mathcal{P}$.
+The key idea behind $\theta$-IS is to introduce bias in the stochastic approximation of spectral loss so as to bring it closer to P-loss.
+For lack of supervision, we are unable to construct the optimal distribution $\pi$ but provide a heuristic of this form:
+\vspace{-1pt}
+\begin{equation}
+\pi_{p} = \frac{1}{U} \sum_{u=0}^{U-1} \frac{C_{u,p}}{\sum_{p=0}^{P-1} C_{u,p'}},
+\end{equation}
+where, intuitively, $C_{u,p}$ represents the importance of parameter dimension $\theta_{u}$ upon path $p$.
+We rescale this importance relative to all paths and average uniformly across parameters $u$, yielding an importance-weighted categorical distribution $\pi$ over paths.
+We then use $\pi$ instead of a uniform distribution for sampling paths in the SCRAPL algorithm (see Algorithm~\ref{alg:scrapl}).
+
+Let $E_{\boldsymbol{x},u}(\boldsymbol{w})$ denote the $u^{\mathrm{th}}$ coordinate of $E_{\boldsymbol{x}}(\boldsymbol{w})$. 
+Given $\boldsymbol{w}$, we measure the sensitivity of each ST path $p$ to the parameter control $u$ around the input $\boldsymbol{x}$ in terms of the following partial derivative:
+\begin{equation}
+s_{\boldsymbol{x},u,p} : \boldsymbol{w} \longmapsto\dfrac{\partial \big(\mathcal{L}_{\boldsymbol{x}}^{\phi_p}\circ D\big)}{\partial \theta_u}
+\Big(E_{\boldsymbol{x},u}(\boldsymbol{w})\Big)
+\end{equation}
+To convert the sensitivity function $s_{\boldsymbol{x},u,p}$ into relative importance $C_{u,p}$, we analyze the curvature of the loss landscape $\mathcal{L}_{\boldsymbol{x}}^{\phi_p}$. 
+We multiply $s_{\boldsymbol{x},u,p}$ by the gradient of $E_{\boldsymbol{x},u}$, yielding a linear transformation of neural network parameters.
+The coordinate-wise gradient of this linear transformation yields a positive definite matrix: we compute its largest eigenvalue. 
+We repeat this process over a representative dataset $\mathcal{X}$ of $N_{\mathrm{IS}}$ unlabeled signals from the training dataset.
+Formally:
+\begin{equation}
+\label{eq:hessian}
+C_{u,p} =
+\mathbb{E}_{\boldsymbol{x}\sim\mathcal{X}}\left[
+\lambda_{\max}\left(
+\boldsymbol{\nabla}_{\!\boldsymbol{w}}
+\left(
+s_{\boldsymbol{x},u,p}(\boldsymbol{w})
+\boldsymbol{\nabla}E_{\boldsymbol{x},u}(\boldsymbol{w})%^{\top}%
+\right)
+\right)
+\right],
+\end{equation}
+where $\lambda_{\max}(\mathbf{M})$ is the magnitude of the largest eigenvalue of a square matrix $\mathbf{M}$; $\boldsymbol{\nabla}_{\boldsymbol{w}}$ is the gradient with respect to $\boldsymbol{w}$.
+In practice, we compute $\lambda_{\max}(\mathbf{M})$ using a stochastic power iteration with deflation and the Hessian vector product, which has the same asymptotic runtime complexity as a backpropagation step.\footnote{\texttt{\url{https://github.com/noahgolmant/pytorch-hessian-eigenthings/}}}
+Crucially, the computation required for $\theta$-IS can be trivially parallelized across $p$ and $u$, and only needs to be computed once before training.
+
+Our definition of $\theta$-IS is inspired by \cite{schmidt2017minimizing}, who propose a variant of the SAG algorithm in which mini-batches are sampled non-uniformly; more precisely, in proportion to the Lipschitz constant of the gradients, which we approximate using Equation~\ref{eq:hessian} for each $p$ and $u$.
+This heuristic relies on the argument that gradients which change quickly should be regarded as more important than gradients which change slowly.
+
+
+\section{Experiments}
+\label{sec:experiments}
+\vspace{-5pt}
+
+We apply SCRAPL to a differentiable implementation of the joint time--frequency scattering transform \citep{muradeli2022differentiable}.
+We conduct three unsupervised sound matching experiments under the DDSP autoencoder paradigm described in Section~\ref{ssec:theta_importance_sampling}.
+The encoder, $E_{\boldsymbol{x}}$, is a convolutional neural network which operates on a constant-$Q$ transform \citep{cheuk2020nnaudio}.
+We use relatively lightweight neural networks for our experiments, a choice made possible by the strong inductive bias DDSP provides and informed by prior work \citep{han2025gradient} indicating that larger networks do not necessarily improve sound matching capabilities.
+We choose all hyperparameters in experiments heuristically.
+
+To highlight the new kinds of perceptual quality assessment tasks SCRAPL enables, all three experiments investigate nondeterministic decoders that introduce random time shifts into the resulting reconstructed audio.
+While our experiments are for a discriminative and generative audio processing task, we emphasize that SCRAPL is a general algorithm and can be equally applied to deep inverse problems that leverage other scattering transforms.
+
+
+\subsection{Joint Time--Frequency Scattering Transform (JTFS)}
+\label{ssec:jtfs}
+\vspace{-5pt}
+
+The joint time--frequency scattering transform (JTFS) is a nonlinear convolutional operator which extracts spectrotemporal modulations over the constant-$Q$ spectrogram \citep{anden2019joint}.
+The multivariable filter $\boldsymbol{\Psi}_p$ comprises two stages: temporal scattering, i.e., 1-D band-pass filtering with Morlet wavelets over the time axis; and frequential scattering, i.e., idem over the log-frequency axis.
+The center frequencies of band-pass filters for temporal scattering, called \emph{rates}, are measured in Hertz.
+The center frequencies for frequential scattering, called \emph{scales}, are measured in cycles per octave.
+Thus, in the case of JTFS, the path index $p$ is a rate--scale multiindex. 
+
+The JTFS has been shown to correlate with human perception \citep{lostanlen2021time,tian2025assessing} and can provide an informative gradient for audio comparisons that are misaligned \citep{vahidi2023mesostructures} or benefit from multi-resolution analysis like percussive sounds \citep{han2024learning}, which is why we select it as the underlying ST of the SCRAPL algorithm in our unsupervised sound matching experiments.
+Additionally, due to its computational complexity, until now it has been used almost exclusively as a precomputed feature instead of a loss function for neural network training.
+
+% \begin{algorithm}
+% \caption{Joint time--frequency scattering by breadth-first search}
+% \begin{algorithmic}
+% \State Input: audio signal $\boldsymbol{x}$
+% \State $\mathbf{U}_1 \leftarrow \mathrm{CQT}(\boldsymbol{x})$
+% \For{rate index $\alpha=1$ to $M$}
+% \State $\mathbf{Y}_{\alpha}^{\mathrm{tm}} \leftarrow \big( \mathbf{U}_1\overset{t}{\ast}\boldsymbol{\psi}_{\alpha}\big)$
+% \For{scale index $\beta=1$ to $N$}
+% \State $\mathbf{Y}_{\alpha,\beta}^{\mathrm{fr}} \leftarrow \big( \mathbf{Y}_{\alpha}^{\mathrm{tm}} \overset{\lambda}{\ast}\boldsymbol{\psi}_{\beta}\big)$
+% \State $\mathbf{U}_{\alpha,\beta}^{\mathrm{fr}} \leftarrow \big \vert \mathbf{Y}_{\alpha,\beta}^{\mathrm{fr}} \big \vert$
+% \State $\Phi_{\alpha, \beta} \leftarrow \mathrm{sum}\left( \mathbf{U}_{\alpha,\beta}^{\mathrm{fr}} \right)$
+% \State Append $\Phi_{\alpha, \beta}$ to $\Phi$
+% \EndFor
+% \EndFor
+% \State Return $\Phi$
+% \end{algorithmic}
+% \end{algorithm}
+
+% \begin{algorithm}
+% \caption{Joint time--frequency scattering by depth-first search}
+% \begin{algorithmic}
+% \State Input: audio signal $\boldsymbol{x}$
+% \State $\mathbf{U}_1 \leftarrow \mathrm{CQT}(\boldsymbol{x})$
+% \For{rate index $\alpha=1$ to $M$}
+% \State $\mathbf{Y}_{\alpha}^{\mathrm{tm}} \leftarrow \big( \mathbf{U}_1\overset{t}{\ast}\boldsymbol{\psi}_{\alpha}\big)$
+% \For{scale index $\beta=1$ to $N$}
+% \State $\mathbf{Y}_{\alpha,\beta}^{\mathrm{fr}} \leftarrow \big( \mathbf{Y}_{\alpha}^{\mathrm{tm}} \overset{\lambda}{\ast}\boldsymbol{\psi}_{\beta}\big)$
+% \State $\mathbf{U}_{\alpha,\beta}^{\mathrm{fr}} \leftarrow \big \vert \mathbf{Y}_{\alpha,\beta}^{\mathrm{fr}} \big \vert$
+% \State $\Phi_{\alpha, \beta} \leftarrow \mathrm{sum}\left( \mathbf{U}_{\alpha,\beta}^{\mathrm{fr}} \right)$
+% \State Append $\Phi_{\alpha, \beta}$ to $\Phi$
+% \EndFor
+% \EndFor
+% \State Return $\Phi$
+% \end{algorithmic}
+% \end{algorithm}
+
+
+\subsection{Granular Synth Sound Matching}
+\label{ssec:exp_granular}
+\vspace{-5pt}
+
+Granular synthesis is an example of a new class of synths that can be effectively sound matched with SCRAPL and the JTFS, due to its inherently stochastic audio generation process with individual grains being misaligned in time at the micro-level, but still being perceived as a single texture.
+It has been extensively used in the production of electronic music since the late 1950s\footnote{\texttt{\url{https://www.iannis-xenakis.org/en/granular-synthesis/}}} and played a fundamental role in the creation of contemporary electronic music genres.
+Our differentiable granular synth produces textures of chirplet grains with random temporal positions, center frequencies, and chirp rates, and has two continuous parameters: density ($\theta_{\mathrm{density}}$) which controls how many grains are produced, and slope ($\theta_{\mathrm{slope}}$) which controls their rate of frequency modulation.
+
+We compare four MSS-based losses: linear, log + linear \citep{engel2020ddsp}, random \citep{steinmetz2020auraloss}, and a SOTA hyperparameter-tuned revisited MSS loss \citep{schwar2023multi}.
+Given their correlation with human perception \citep{kilgour2019interspeech, tailleur2024correlation}, we also include the Euclidean distance of MS-CLAP \citep{elizalde2023clap} and PANNs Wavegram Logmel embeddings \citep{kong2020panns}.
+In addition, we train with ordinary (i.e., full-tree) JTFS so as to put the speed and accuracy of SCRAPL into context.
+Lastly, as an estimate of best achievable performance with our encoder architecture and training configuration, we run a supervised version of sound matching, also known as ``parameter loss'' or P-loss for short (see Section~\ref{ssec:theta_importance_sampling}).
+We summarize the implementation details in Appendix~\ref{app:hyperparams}.
+
+
+\subsection{Chirplet Synth Sound Matching}
+\label{ssec:exp_chirplet}
+\vspace{-5pt}
+
+Similar to the unsupervised granular synth sound matching experiment, we evaluate our $\theta$-importance sampling initialization heuristic for SCRAPL on a differentiable chirplet synth (based on the implementation by \cite{vahidi2023mesostructures}) with two parameters: $\theta_{\mathrm{AM}}$ which controls the rate of amplitude modulation (Hz) and $\theta_{\mathrm{FM}}$ which controls the rate of frequency modulation (oct/s).
+Since the paths in the JTFS correspond to specific wavelet AM and FM center frequencies, given a chirplet synth configuration with bounded $\theta_{\mathrm{AM}}$ and $\theta_{\mathrm{FM}}$ ranges, we know approximately which paths of the JTFS should provide the most informative gradients for the synth parameters.
+After computing our initialization heuristic, we can analyze the resulting path probabilities and verify that the paths within the parameter ranges of the synth have been assigned a probability greater than uniform.
+
+We evaluate four different synth configurations: 
+\begin{enumerate}
+    \item Slow AM ($\theta_{\mathrm{AM}} \in [1.0, 2.0]$ Hz), slow FM ($\theta_{\mathrm{FM}} \in [0.5, 1.0]$ oct/s);
+    \item Slow AM ($\theta_{\mathrm{AM}} \in [1.0, 2.0]$ Hz), moderate FM ($\theta_{\mathrm{FM}} \in [2.0, 4.0]$ oct/s);
+    \item Fast AM ($\theta_{\mathrm{AM}} \in [2.8, 8.4]$ Hz), moderate FM ($\theta_{\mathrm{FM}} \in [2.0, 4.0]$ oct/s);
+    \item Fast AM ($\theta_{\mathrm{AM}} \in [2.8, 8.4]$ Hz), fast FM ($\theta_{\mathrm{FM}} \in [4.0, 12.0]$ oct/s).
+\end{enumerate}
+We compare SCRAPL training runs using uniform sampling and $\theta$-importance sampling calculated from a single training batch of 32 examples.
+We summarize the implementation details in Appendix~\ref{app:hyperparams}.
+
+
+\subsection{Roland TR-808 Sound Matching}
+\label{ssec:exp_808}
+\vspace{-5pt}
+
+As a real-world evaluation task, we sound match a DDSP implementation~\citep{shier2024realtime} of the Roland TR-808 Rhythm Composer drum machine, a historically meaningful synthesizer for the creation of Detroit techno, house, and hip-hop music.\footnote{\texttt{\url{https://www.roland.com/global/promos/roland_tr-808/}}} 
+Inharmonic transient sounds like percussion are a form of non-stationary signal that the JTFS is well suited for perceptual quality assessment~\citep{han2024learning} because of its ability to extract spectrotemporal patterns at multiple scales and rates.
+Additionally, due to the transient nature of drum sounds, they are highly sensitive to even a few milliseconds of misalignment, thus further benefiting from the time invariance of JTFS.
+
+We use a high fidelity, 100\% analog dataset\footnote{\texttt{\url{https://samplesfrommars.com/products/tr-808-samples/}}} of 681 bass drum, snare, tom, and hi-hat one-shot recordings of the TR-808 and repeat experiments 40 times on different train/validation/test splits and random seeds.
+Since the transient of analog drum recordings is rarely perfectly aligned, and no two analog TR-808 drum synths produce the same signal, we investigate both perfectly aligned (labeled \emph{micro}) and unaligned (labeled \emph{meso}) sound matching by up to $\pm 46$ ms ($\pm 2048$ samples at 44.1 kHz). 
+Given its correlation with human perception, we employ the JTFS and Fréchet Audio Distance (FAD) \citep{kilgour2019interspeech, defossez2023high} as evaluation metrics. 
+% We employ MSS and JTFS audio distance as evaluation metrics, as well as
+We also include MSS and mean frame-by-frame perceptual loudness and loudness-weighted perceptually-scaled spectral centroid and flatness for both the transient and decay portions of reconstructed signals (nine metrics in total). 
+Additional context for these last six metrics can be found in \cite{shier2024realtime}. 
+We summarize the implementation details in Appendix~\ref{app:hyperparams}.
+
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Granular Synth Sound Matching}
+\label{ssec:results_granular}
+\vspace{-3pt}
+
+We benchmark all loss function computational costs (see Appendix~\ref{app:eval_results_granular}, Table~\ref{tab:benchmark}) and plot them in Figure~\ref{fig:gran_scatter_plot} against their evaluation accuracy (see Table~\ref{tab:gran_test_results}) on $\boldsymbol{\theta_{\mathrm{synth}}} \; L_1$ relative to supervised training (i.e., P-loss).
+We observe that SCRAPL comes within factor two of JTFS in terms of accuracy, and within factor two of MSS in terms of runtime, striking a notable balance between them.
+The significant difference in runtime and convergence between JTFS and SCRAPL is further illustrated in Figure~\ref{fig:gran_wall_clock_time} where we plot validation accuracy against wall-clock time, instead of optimization steps.
+We also note that MSS is unable to sound match the synth at all, and the SOTA embedding losses are only able to optimize $\theta_{\mathrm{density}}$, albeit not as well as SCRAPL and JTFS.
+Validation accuracy curves for all methods are also provided in Figure~\ref{fig:gran_wall_clock_time}.
+We provide a variation of Figure~\ref{fig:gran_scatter_plot} plotting the test JTFS audio distance on the y-axis in Appendix~\ref{app:eval_results_granular}, Figure~\ref{fig:gran_scatter_plot_jtfs}.
+
+
+\begin{table}[t]
+\centering
+\caption{Evaluation results for the unsupervised granular synth sound matching task with two continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters: $\theta_{\mathrm{density}}$ and $\theta_{\mathrm{slope}}$ (more details in Section~\ref{ssec:exp_granular}). Uncertainties are 95\% CI for 20 training runs using different random seeds. Due to computational limitations, the JTFS method is only evaluated once.}
+\label{tab:gran_test_results}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{12pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+}
+    \toprule
+    \bf{Method} & \multicolumn{2}{c}{$\boldsymbol{\theta_{\mathrm{synth}} \; L_1 \text{ \textperthousand} \downarrow}$} & \multicolumn{2}{c}{$\theta_{\mathrm{density}} \; \boldsymbol{L_1 \text{ \textperthousand} \downarrow}$} & \multicolumn{2}{c}{$\theta_{\mathrm{slope}} \; \boldsymbol{L_1 \text{ \textperthousand} \downarrow}$} \\
+    \midrule
+    JTFS                           & \multicolumn{2}{c}{\bf 42.4} & \multicolumn{2}{c}{\bf 65.8} & \multicolumn{2}{c}{\bf 19.0} \\
+    % JTFS                           & \bf  42.377 &       0 & \bf 65.788 &       0 & \bf 18.965 &       0 \\
+    SCRAPL (no $\theta$-IS) &      73.809 &  13.376 &     70.422 &   8.819 &     77.196 &  18.835 \\
+    SCRAPL                         &       65.68 &   4.207 &     72.621 &  6.3258 &     58.738 &  7.4908 \\
+    MSS Linear                     &      370.14 & 0.52049 &     498.78 & 0.84367 &     241.49 & 0.28485 \\
+    MSS Log + Linear               &       259.1 &  1.7071 &     276.76 &  3.2076 &     241.43 & 0.42465 \\
+    MSS Revisited                  &      311.06 &  19.407 &     376.03 &  40.183 &     246.09 &  3.0042 \\
+    MSS Random                     &      195.47 &  4.1916 &     148.74 &  7.8403 &      242.2 &  1.0275 \\
+    MS-CLAP                        &      165.85 &  8.2092 &     81.861 &  9.0104 &     249.85 &  8.1742 \\
+    PANNs Wavegram-Logmel          &      158.94 &  4.3815 &     80.337 &  4.2015 &     237.54 &  5.4842 \\
+    \midrule
+    P-loss                         &      20.505 &  0.1961 &     24.748 & 0.31486 &     16.261 & 0.31461 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}[h]
+    % \vspace{-10pt}
+    % \begin{center}
+    \begin{minipage}{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth, trim=18pt 20pt 20pt 19pt, clip]{figures/val_scrapl_wall_clock_time.pdf}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.5\textwidth}
+    \centering
+    \includegraphics[width=\linewidth, trim=18pt 20pt 19pt 19pt, clip]{figures/val_scrapl_baselines.pdf}
+    \end{minipage}
+    % \includegraphics[width=0.7\linewidth]{figures/val_scrapl_wall_clock_time.pdf}
+    % \end{center}
+    \vspace{-10pt}
+    \caption{Left: JTFS vs. SCRAPL wall-clock training times on a single NVIDIA RTX A5000 GPU. Due to computational limitations, the JTFS method is only evaluated once. Right: Validation convergence graphs for the unsupervised granular synth sound matching task. Both: Shaded areas are 95\% CI for 20 training runs using different random seeds.}
+    \label{fig:gran_wall_clock_time}
+\end{figure}
+
+
+Table~\ref{tab:gran_ablation} summarizes the results of an ablation of SCRAPL and its $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA, and $\theta$-IS optimization techniques for the granular synth sound matching task, with Appendix~\ref{app:eval_results_granular}, Table~\ref{tab:gran_ablation_p_vals} providing additional information about statistical significance.
+There is a clear monotonic improvement in accuracy and convergence time for each technique, as well as a reduction in variance provided by $\mathcal{P}$-SAGA, and $\theta$-IS.
+We emphasize that SCRAPL without any extra optimization techniques still outperforms all other non-JTFS methods in terms of accuracy, demonstrating its ability to optimize a new class of problems and making just stochastic sampling of scattering transforms a viable approach if the additional memory and computational requirements of $\mathcal{P}$-Adam, $\mathcal{P}$-SAGA, and $\theta$-IS are undesirable.
+Finally, from Table~\ref{tab:gran_test_results}, we see that $\theta$-IS results in a better overall accuracy of $\boldsymbol{\theta_{\mathrm{synth}}}$ than uniform sampling (despite $\theta_{\mathrm{density}}$ now being slightly worse), which is consistent with our hypothesis from Section~\ref{ssec:theta_importance_sampling} that $\theta$-IS results in more balanced convergence of all synth parameters.
+Validation accuracy curves for all ablations are provided in Appendix~\ref{app:eval_results_granular}, Figure~\ref{fig:gran_ablation}.
+
+
+\begin{table}[t]
+\centering
+\caption{Ablation table for SCRAPL with test results and validation $\boldsymbol{\theta_{\mathrm{synth}}} \; L_1$ total variation and convergence steps for the unsupervised granular synth sound matching task. Convergence is defined as $\boldsymbol{\theta_{\mathrm{synth}}} \; L_1 < 100 \text{ \textperthousand}$. Statistical significance results for each additional optimization technique are presented in Appendix~\ref{app:eval_results_granular}, Table~\ref{tab:gran_ablation_p_vals}. Uncertainties are 95\% CI for 20 training runs using different random seeds. Due to computational limitations, the JTFS method is only evaluated once.}
+\label{tab:gran_ablation}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{3.9pt}
+\begin{tabular}{
+    lccc|
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+    S[table-format=5.0] @{$\,\pm\,$} S[table-format=4.0]
+}
+    \toprule
+    \bf{Method} & \bf{$\mathcal{P}$-} & \bf{$\mathcal{P}$-} & \bf{$\theta$-IS} & \multicolumn{2}{c}{\bf{Test}} & \multicolumn{4}{c}{\bf{Validation}} \\
+    \cmidrule(lr){5-6} \cmidrule(lr){7-10}
+    & \bf{Adam} & \bf{SAGA} &  & \multicolumn{2}{c}{$\boldsymbol{\theta_{\mathrm{synth}}} \, L_1 \text{ \textperthousand} \downarrow$} & \multicolumn{2}{c}{Total Var. $\downarrow$} & \multicolumn{2}{c}{Conv. Steps $\downarrow$} \\
+    \midrule
+    SCRAPL  &        &        &        &     99.691 & 8.1849 &     5.2991 &   0.2502 &     10906 & 1170 \\
+            & \cmark &        &        &     87.433 & 14.516 &     6.9779 &  0.25225 &      8006 &  697 \\
+            & \cmark & \cmark &        &     73.809 & 13.376 &     3.4574 &  0.15076 &      7296 &  683 \\
+            & \cmark & \cmark & \cmark & \bf  65.68 &  4.207 & \bf 3.2694 &  0.11756 & \bf  6014 &  642 \\
+    \midrule
+    % JTFS    &        &        &        &     42.377 &      0 &     5.6564 &        0 &      1442 &    0 \\
+    JTFS    &        &        &        &     \multicolumn{2}{c}{42.4} & \multicolumn{2}{c}{5.66} & \multicolumn{2}{c}{1442} \\
+    P-loss  &        &        &        &     20.505 & 0.1961 &     1.8301 & 0.024634 &       672 &   23 \\
+    \bottomrule
+\end{tabular}
+\vspace{-10pt}
+\end{table}
+
+
+In summary, this experiment demonstrates that the variance of the gradient elicited by the stochastic approximation of a ST with the SCRAPL algorithm is manageably small in the context of deep neural network (DNN) training, resulting in a favorable tradeoff between computational speed and convergence rate when compared to full-tree scattering (i.e., the JTFS).
+Training with SCRAPL is nearly equivalent to training with the gradient of full-tree scattering in terms of JTFS loss on unseen test data: see Appendix~\ref{app:eval_results_granular}, Figure~\ref{fig:gran_scatter_plot_jtfs}.
+In terms of synthesizer parameter error, training with SCRAPL is not as accurate as training with full-tree ST, but outperforms prior work: see Table~\ref{tab:gran_test_results}.
+This SOTA result paves the way towards a new kind of DNN training for deep inverse problems, in which the forward operator (synth) produces nondeterministic time--frequency patterns.
+
+Understanding the convergence properties of algorithms like SCRAPL for convex and non-convex tasks is an active area of research \citep{sashank2016fast, sashank2018on, defossez2022a, kim2025adam}.
+Our proof of Proposition~\ref{prop:unbiased} in Appendix~\ref{app:scrapl_proof} that SCRAPL without any additional optimization techniques is an unbiased estimator of full-tree ST is an important first step in this direction.
+We believe that further convergence analysis of SCRAPL remains a promising avenue for future work.
+\vspace{-3pt}
+
+% SCRAPL does not completely match the accuracy of the JTFS after the same number of training steps, which we attribute to the algorithm providing $P$ times less information and computation per step than full-tree scattering (i.e., the JTFS).
+% Given our proof of Proposition~\ref{prop:unbiased} in Appendix~\ref{app:scrapl_proof} that SCRAPL without any additional optimization techniques is an unbiased estimator of full-tree scattering transforms, we would expect it to converge to the same result as the JTFS after $O(P)$ times more training steps using stochastic gradient descent applied to a convex optimization task.
+% We hypothesize that SCRAPL matches or surpasses full-tree ST convergence given a convex optimization task and $O(P)$ times more training steps.
+% We base this hypothesis on our proof of Proposition~\ref{prop:unbiased} in Appendix~\ref{app:scrapl_proof} that SCRAPL without any additional optimization techniques is an unbiased estimator of full-tree scattering transforms and seminal prior work on stochastic optimization methods \citep{robbins1951stochastic, keskar2017on}.
+% However, analyzing the convergence of optimizers and loss functions for convex and non-convex tasks is an active area of research \citep{sashank2016fast, sashank2018on, defossez2022a, kim2025adam} which we leave as future work to determine additional convergence guarantees for the SCRAPL algorithm.
+
+
+\subsection{Chirplet Synth Sound Matching}
+\label{ssec:results_chirplet}
+\vspace{-3pt}
+
+Table~\ref{tab:chirp_test_results} summarizes the chirplet synth evaluation results, with Appendix~\ref{app:eval_results_chirplet}, Figure~\ref{fig:adaptive_val_315} showing validation accuracy curves for uniform and $\theta$-importance sampling on the four synth configurations.
+$\theta$-IS improves the prediction of $\theta_{\mathrm{AM}}$ by $25$--$55\%$ and of $\theta_{\mathrm{FM}}$ by $14$--$80\%$, while reducing time to convergence by $23$--$50\%$: see Appendix~\ref{app:eval_results_chirplet}, Table~\ref{tab:chirp_convergence}.
+Of course, these improvements are for synth configurations that have been designed to showcase the benefit of nonuniform sampling of paths; however, this overall trend remains true, albeit not as pronounced, for the granular synth (Table~\ref{tab:gran_ablation}) and real-world sound matching task (Table~\ref{tab:808_test_results}).
+Finally, we plot the path $\theta$-IS probabilities in Appendix~\ref{app:eval_results_chirplet}, Figure~\ref{fig:adaptive_probs_315} and observe that indeed, a unique distribution is learned for each synth, and the greater than uniform probabilities appear to roughly correspond to each configuration's limited AM / FM range.
+\vspace{-3pt}
+
+
+\begin{table}[t]
+\centering
+\caption{Evaluation results for SCRAPL with and without the $\theta$-importance sampling initialization heuristic on unsupervised sound matching of four different AM / FM chirplet synths with two continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters: $\theta_{\mathrm{AM}}$ and $\theta_{\mathrm{FM}}$ (more details in Section~\ref{ssec:exp_chirplet}). Uncertainties are 95\% CI for 20 training runs using different random seeds.}
+\label{tab:chirp_test_results}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{4.1pt}
+\begin{tabular}{
+    ccc|
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+    S[round-mode=figures, round-precision=3] @{$\,\pm\,$} S[round-mode=figures, round-precision=2]
+}
+    \toprule
+    \bf{Sampling Method} & \multicolumn{2}{c|}{\bf{Synth Configuration}} & \multicolumn{2}{c}{$\theta_{\mathrm{AM}} \; \boldsymbol{L_1 \text{ \textperthousand } \downarrow}$} & \multicolumn{2}{c}{$\theta_{\mathrm{FM}} \; \boldsymbol{L_1 \text{ \textperthousand } \downarrow}$}\\
+    \cmidrule(lr){2-3}
+    \bf{($\pi$)} & {$\theta_{\mathrm{AM}}$ (Hz)} & {$\theta_{\mathrm{FM}}$ (oct/s)} & \multicolumn{2}{c}{} & \multicolumn{2}{c}{} \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$1.0 - 2.0$} & \multirow{2}{*}{$0.5 - 1.0$}  &     123.54 & 10.268 &      154.7 & 18.332 \\
+    $\theta$-IS &                              &                               & \bf 77.654 & 6.6853 & \bf 78.449 & 10.988 \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$1.0 - 2.0$} & \multirow{2}{*}{$2.0 - 4.0$}  &     111.03 & 19.623 &     68.619 & 11.232 \\
+    $\theta$-IS &                              &                               & \bf 55.474 & 4.0831 & \bf 44.397 & 2.7962 \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$2.8 - 8.4$} & \multirow{2}{*}{$2.0 - 4.0$}  &     121.78 &  21.87 &     238.43 & 20.698 \\
+    $\theta$-IS &                              &                               & \bf 54.881 & 3.4758 & \bf 48.464 & 4.7398 \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$2.8 - 8.4$} & \multirow{2}{*}{$4.0 - 12.0$} &     108.48 & 12.094 &     95.646 & 20.137 \\
+    $\theta$-IS &                              &                               & \bf 81.507 &  11.54 & \bf 82.116 & 10.747 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsection{Roland TR-808 Sound Matching}
+\label{ssec:results_808}
+\vspace{-3pt}
+
+Table~\ref{tab:808_test_results} and Appendix~\ref{app:eval_results_808}, Tables~\ref{tab:808_transient}, and~\ref{tab:808_decay} summarize the unsupervised Roland TR-808 synth sound matching audio distance, transient, and decay perceptual similarity results.
+Overall, we observe that JTFS dominates almost all metrics in both micro and meso environments, showcasing its suitability for transient percussive sounds and temporal invariance.
+After JTFS, MSS performs best when samples are perfectly aligned (micro), but performs worse in the unaligned (meso) setting and is unable to match the transient, which is the most salient part of a drum hit.
+In contrast, SCRAPL shows consistent sound matching performance in both micro and meso environments and is able to preserve the transient even when audio is misaligned.
+However, SCRAPL fails to recover the less audible decay portion of the signal.
+We hypothesize this is due to informative, low-frequency paths for the decay being sparse and underrepresented in the categorical distribution over paths, even after accounting for $\theta$-IS.
+%Since the hyperparameters of SCRAPL were chosen heuristically, unlike heavily tuned loss functions like MSS Revisited, we believe a more thorough search could help, as well as increasing the weighting of individual $\boldsymbol{\theta_{\mathrm{synth}}}$ related to the decay of the synth during the $\theta$-IS initialization process.
+We provide listening samples at the accompanying website\footnote{Companion website: \texttt{\url{https://christhetree.github.io/scrapl/}}} and encourage readers to evaluate the results directly.
+\vspace{-3pt}
+
+
+\begin{table}[t]
+\centering
+\caption{Audio distance evaluation results for the unsupervised Roland TR-808 DDSP synth sound matching task with 14 continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters (more details in Section~\ref{ssec:exp_808}). Uncertainties are 95\% CI for 40 training runs using different random seeds and dataset splits. Due to computational limitations, the JTFS method is only trained and evaluated for 4 random seeds.}
+\label{tab:808_test_results}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=true,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{6pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures, round-precision=3] @{$\kern-15pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-2pt$} 
+    S[round-mode=figures, round-precision=3] @{$\kern-15pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-0pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-2pt$} 
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-3pt$} 
+    S[round-mode=figures, round-precision=3] @{$\,\pm\kern-8pt$} S[round-mode=figures, round-precision=2] 
+    S[round-mode=figures, round-precision=3] @{$\,\pm\kern-4pt$} S[round-mode=figures, round-precision=2] 
+}
+    \toprule
+    \bf{Method} & \multicolumn{4}{c}{\bf{MSS Log. + Linear $\downarrow$}} & \multicolumn{4}{c}{\bf{JTFS $\downarrow$}} & \multicolumn{4}{c}{\bf{FAD (EnCodec) $\downarrow$}} \\
+    \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13}
+    & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} \\
+    \midrule
+    JTFS                     &     617.37 & 45.539 &     622.45 & 45.023 & \bf 489.92 & 27.752 & \bf 522.89 & 16.526 & \bf 0.7806 & 0.06875 & \bf 1.0431 & 0.1521  \\
+    SCRAPL\\(no $\theta$-IS) &     862.36 & 35.516 &     944.48 & 48.313 &     1139.6 & 47.901 &     1247.6 & 50.759 &     2.7499 & 0.38505 &     2.8538 & 0.38285 \\
+    SCRAPL                   &     857.31 & 42.338 &     879.45 & 42.096 &     1054.2 & 49.767 &     1109.3 & 52.394 &     2.4347 & 0.2193  &     2.4193 & 0.2214  \\
+    MSS Lin.                 &     610.57 & 14.866 &      724.4 & 37.007 &     778.73 & 30.816 &     1470.6 &  83.44 &     1.2219 & 0.08195 &     3.3305 & 0.4631  \\
+    MSS L+L                  & \bf 596.42 & 18.856 & \bf 614.68 & 17.802 &     1263.8 & 57.568 &     1393.5 &  48.54 &     2.1362 & 0.3896  &     3.011  & 0.39795 \\
+    MSS Rev.                 &     636.65 & 15.734 &     797.15 & 20.069 &     869.81 & 23.385 &     1248.1 & 26.509 &     2.0172 & 0.36715 &     2.2067 & 0.34305 \\
+    MSS Rand.    &     681.79 & 25.209 &     699.68 & 26.245 &     1406.9 & 86.683 &     1504.1 & 58.533 &     7.0256 & 2.24695 &     6.6506 & 1.7319  \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\section{Conclusion}
+\label{sec:conclusion}
+Differentiable similarity measures have the potential to enhance the perceptual quality of generative models and deep inverse problem solvers.
+In spite of their mathematical guarantees and neurophysiological plausibility, scattering transforms (ST) have not been able to realize this potential, for lack of tractable optimization algorithms.
+To fill this gap, SCRAPL takes advantage of the tree-like structure of ST to save computation at each backward pass.
+Our numerical simulations show the value of SCRAPL for unsupervised sound matching, particularly when the synthesizer of interest is nondeterministic.
+Although our ST architecture of choice is joint time--frequency scattering (JTFS), we stress that SCRAPL is agnostic to the specifics of multivariable filterbank design: beyond wavelet scattering, it extends to learnable scattering-like architectures \citep{lattner2019learning,cotter2019learnable,gauthier2022parametric}.
+We consider investigating SCRAPL's generalizability to other ST architectures, different audio tasks such as speech enhancement and automatic mixing, and additional modalities like adversarial image generation and texture synthesis as promising directions for future work.
+As a longer-term perspective, the success of our architecture-informed importance sampling heuristic highlights the opportunity to meta-learn the relative importance of each ST path for the task at hand over the course of neural network training \citep{yamaguchi2023regularizing}.
+
+\clearpage
+
+
+\subsubsection*{Reproducibility Statement}
+
+ Appendix~\ref{app:hyperparams} contains hyperparameters and training details for each of the three experiments in this paper.
+ We also provide listening samples, source code, configuration files, instructions to reproduce our experiments, and the SCRAPL algorithm as a Python package at the companion website:\\ \texttt{\url{https://christhetree.github.io/scrapl/}}
+
+
+% \subsubsection*{Author Contributions}
+% If you'd like to, you may include  a section for author contributions as is done
+% in many journals. This is optional and at the discretion of the authors.
+
+
+\subsubsection*{Acknowledgments}
+
+Christopher Mitcheltree is a research student at the UKRI Centre for Doctoral Training in Artificial Intelligence and Music, supported jointly by UK Research and Innovation (grant number EP/S022694/1) and Queen Mary University of London.
+This research was funded in part by the French National Research Agency (ANR) under the project MuReNN ``ANR-23-CE23-0007''.
+
+C.M. would like to thank Jordie Shier for his help with the differentiable Roland TR-808 synthesizer implementation and the insightful conversations about applying and evaluating the SCRAPL algorithm.  
+
+
+{
+\small
+\bibliography{scrapl2026iclr}
+\bibliographystyle{iclr2026_conference}
+}
+
+\clearpage
+
+
+\appendix
+
+\section{Proof of Proposition \ref{prop:unbiased}}
+\label{app:scrapl_proof}
+
+Let us write $\boldsymbol{\tilde{x}} = F_{\boldsymbol{x}}(\boldsymbol{w})$.
+By linearity of the gradient, we may decompose $\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\Phi}(\boldsymbol{\tilde{x}})$ over paths:
+\begin{equation}
+\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\Phi}(\boldsymbol{\tilde{x}}) = \dfrac{1}{P}
+\sum_{p=0}^{P-1} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}).
+\label{proofeq:nabla-decomp}
+\end{equation}
+Let us denote the Jacobian of $F_{\boldsymbol{x}}$ at $\boldsymbol{w}$ by $\mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})$.
+For each $p \in \mathcal{P}$, we apply the chain rule:
+\begin{equation}
+\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\phi_p}\circ F_{\boldsymbol{x}})(\boldsymbol{w}) =
+% \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}})^{\top} \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w}).
+\, \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})^{\top} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}).
+\label{eq:chain-rule}
+\end{equation}
+Plugging the identity above into Equation~\ref{proofeq:nabla-decomp} yields:
+\begin{align}
+\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\Phi}\circ F_{\boldsymbol{x}})(\boldsymbol{w}) 
+% &= \dfrac{1}{P} \sum_{p=0}^{P-1} \Big(\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}})^{\top} \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w}) \Big) \nonumber \\
+&= \dfrac{1}{P} \sum_{p=0}^{P-1} \left(\mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})^{\top} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}) \right) \nonumber \\
+% &= \left(\dfrac{1}{P} \sum_{p=0}^{P-1} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}) \right)^{\top}\mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w}),
+% \label{proofeq:associativity}
+&= \, \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})^{\top} \left(\dfrac{1}{P} \sum_{p=0}^{P-1} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}) \right),
+\label{proofeq:distributivity}
+\end{align}
+% where the latter equation holds by associativity of matrix multiplication.
+where the latter equation holds by distributivity of matrix multiplication.
+
+We now compute the expected value of $\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})$ for $z\sim\mathcal{U}_P$, i.e., a uniform distribution over $\mathcal{P}$:
+\begin{equation}
+\mathbb{E}_{z\sim\mathcal{U}_P}\left[
+\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})
+\right] = \dfrac{1}{P}
+\sum_{p=0}^{P-1} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_p}(\boldsymbol{\tilde{x}}).
+\end{equation}
+% We recognize the row vector on the right-hand side of Equation~\ref{proofeq:associativity}.
+We recognize the column vector on the right-hand side of Equation~\ref{proofeq:distributivity}.
+Thus:
+\begin{align}
+\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\Phi}\circ F_{\boldsymbol{x}})(\boldsymbol{w}) 
+% &= \mathbb{E}_{z\sim\mathcal{U}_P}\left[
+% \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})
+% \right]^{\top} \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w}) \nonumber \\
+&= \, \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})^{\top} \, \mathbb{E}_{z\sim\mathcal{U}_P}\left[
+\boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})
+\right] \nonumber \\
+% &= \mathbb{E}_{z\sim\mathcal{U}_P}\left[
+% \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})^{\top} \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})
+% \right],
+&= \, \mathbb{E}_{z\sim\mathcal{U}_P}\left[
+\, \mathbf{J}_{F_{\boldsymbol{x}}}(\boldsymbol{w})^{\top} \boldsymbol{\nabla}\mathcal{L}_{\boldsymbol{x}}^{\phi_z}(\boldsymbol{\tilde{x}})
+\right],
+\end{align}
+where the latter equation holds by linearity of the expected value.
+Finally, we use the reverse form of the chain rule in Equation~\ref{eq:chain-rule} to identify the expected SCRAPL gradient:
+\begin{equation}
+\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\Phi}\circ F_{\boldsymbol{x}})(\boldsymbol{w}) =
+\mathbb{E}_{z\sim\mathcal{U}_P}\left[
+\boldsymbol{\nabla}(\mathcal{L}_{\boldsymbol{x}}^{\phi_z}\circ F_{\boldsymbol{x}})(\boldsymbol{w})
+\right]
+\end{equation}
+concluding the proof.
+
+\clearpage
+
+
+\section{Additional Granular Synth Evaluation Results}
+\label{app:eval_results_granular}
+
+\begin{table}[H]
+\centering
+\caption{Loss function benchmark results for one optimization step (forward + backward, 32768 samples of audio, batch size 4, 1 thread, single precision, 1 NVIDIA RTX A5000 GPU, CUDA 12.4, PyTorch 2.8.0). SCRAPL paths are benchmarked individually and then aggregated across all paths using the median for time and interquartile range (IQR), and maximum for memory usage.}
+% Median memory usage for SCRAPL is 1280 MB
+\label{tab:benchmark}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=true,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{5.5pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures,round-precision=3]
+    S[round-mode=figures,round-precision=3]
+    S[table-format=5.0]
+}
+    \toprule
+    \bf{Method} & \bf{Median Time (ms) $\downarrow$} & \bf{IQR (ms) $\downarrow$} & \bf{Max. Memory (MB) $\downarrow$} \\
+    \midrule
+    JTFS                  &      1731 &      23.88 &     12967 \\
+    SCRAPL                &     89.82 &      3.621 &      2503 \\
+    MSS Linear            &     26.26 &      1.119 &       694 \\
+    MSS Log + Linear      &     19.06 &     0.6957 &       702 \\
+    MSS Revisited         & \bf 16.96 & \bf 0.2103 & \bf   663 \\
+    MSS Random            &     24.71 &      5.812 &       706 \\
+    MS-CLAP               &     75.55 &      1.686 &      2032 \\
+    PANNs Wavegram-Logmel &     29.29 &      5.917 &      1360 \\
+    \midrule
+    % P-loss ($\boldsymbol{\theta_{\mathrm{synth}}} \in \mathbb{R}^2$) & 0.5158 & 0.1078 & 625 \\
+    P-loss ($\dim(\boldsymbol{\theta_{\mathrm{synth}}}) = 2$) & 0.5158 & 0.1078 & 625 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}[h]
+    \begin{center}
+    \includegraphics[width=1.0\linewidth, trim=14pt 14pt 14pt 14pt, clip]{figures/relative_jtfs_error_vs_computation.pdf}
+    \end{center}
+    \vspace{-15pt}
+    \caption{
+    Mean average JTFS perceptual audio distance (y-axis) versus computational cost (x-axis) of unsupervised sound matching models for the granular synthesis task.
+    Both axes are rescaled by the performance of a supervised model with the same number of parameters.
+    Whiskers denote 95\% CI, estimated over 20 random seeds. Due to computational limitations, JTFS-based sound matching is evaluated only once.}
+    \label{fig:gran_scatter_plot_jtfs}
+\end{figure}
+
+
+\begin{table}[H]
+\centering
+\caption{Statistical significance and relative improvement of each additional SCRAPL optimization technique for the unsupervised granular synth sound matching task. Convergence is defined as $\boldsymbol{\theta_{\mathrm{synth}}} \; L_1 < 100 \text{ \textperthousand}$. See Table~\ref{tab:gran_ablation} for absolute results and comparisons to JTFS and P-loss. Uncertainties are 95\% CI for 20 training runs using different random seeds. Due to computational limitations, the JTFS method is only evaluated once.}
+\label{tab:gran_ablation_p_vals}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+\setlength{\tabcolsep}{5.05pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures, round-precision=3] @{$\kern-5pt\pm\,$} S[round-mode=figures, round-precision=2]
+    c
+    S[round-mode=figures, round-precision=3] @{$\,\pm\kern-5pt$} S[round-mode=figures, round-precision=2]
+    c
+    S[table-format=4.0] @{$\,\pm\,$} S[table-format=4.0]
+    c
+}
+    \toprule
+    \bf{Opt.} & \multicolumn{3}{c}{\bf{Test}} & \multicolumn{6}{c}{\bf{Validation}} \\
+    \cmidrule(lr){2-4} \cmidrule(lr){5-10}
+    \bf{Technique} & \multicolumn{3}{c}{$\Delta \, \boldsymbol{\theta_{\mathrm{synth}}} \, L_1 \text{ \textperthousand} \downarrow$} & \multicolumn{3}{c}{$\Delta$ Total Var. $\downarrow$} & \multicolumn{3}{c}{$\Delta$ Conv. Steps $\downarrow$} \\
+    \midrule
+    + $\mathcal{P}$-Adam   &     -12.258 & 17.043 & $\kern-14pt(p = 0.15)$ &      1.6788  & 0.34969  & $\kern-9pt(p < 0.01)$ & \bf -2900 & 1800 & $\kern-9pt(p < 0.01)$ \\
+    + $\mathcal{P}$-SAGA   & \bf -13.624 & 5.5622 & $\kern-14pt(p < 0.01)$ & \bf -3.5205  & 0.18385  & $\kern-9pt(p < 0.01)$ &     -710  & 450  & $\kern-9pt(p < 0.01)$ \\
+    + $\theta$-IS          &     -8.1293 & 14.551 & $\kern-14pt(p = 0.26)$ &     -0.18805 & 0.091819 & $\kern-9pt(p < 0.01)$ &     -1280 & 410  & $\kern-9pt(p < 0.01)$ \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}[h]
+    \begin{center}
+    \includegraphics[width=1.0\linewidth]{figures/val_scrapl_ablation.pdf}
+    \end{center}
+    \vspace{-20pt}
+    \caption{Validation convergence graphs of SCRAPL ablations and the JTFS for the unsupervised granular synth sound matching task. Shaded areas are 95\% CI for 20 training runs using different random seeds. Due to computational limitations, the JTFS method is only evaluated once.}
+    \label{fig:gran_ablation}
+\end{figure}
+
+\clearpage
+
+
+\section{Additional Chirplet Synth Evaluation Results}
+\label{app:eval_results_chirplet}
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_val_lo_med.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_val_hi_hi.png}
+\end{minipage}
+\vfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_val_lo_lo.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_val_hi_med.png}
+\end{minipage}
+\vspace{-15pt}
+\caption{SCRAPL $\boldsymbol{\theta_{\mathrm{synth}}} \; L_1$ validation values during training for four different AM / FM chirplet synths with two continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters: $\theta_{\mathrm{AM}}$ and $\theta_{\mathrm{FM}}$ (more details in Section~\ref{ssec:exp_chirplet}). Blue is using the $\theta$-importance sampling initialization heuristic, and black is using uniform sampling. Shaded areas are 95\% CI for 20 training runs using different random seeds.}
+\label{fig:adaptive_val_315}
+\end{figure}
+
+
+\begin{table}[H]
+\centering
+\caption{Convergence rate (CR) and steps for SCRAPL with and without the $\theta$-importance sampling initialization heuristic on unsupervised sound matching of four different AM / FM chirplet synths with two continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters: $\theta_{\mathrm{AM}}$ and $\theta_{\mathrm{FM}}$ (more details in Section~\ref{ssec:exp_chirplet}). Convergence is defined as $\; L_1 < 100 \text{ \textperthousand}$ for $\theta_{\mathrm{AM}}$ or $\theta_{\mathrm{FM}}$. Uncertainties are 95\% CI for 20 training runs using different random seeds.}
+\label{tab:chirp_convergence}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=false,
+    table-number-alignment=center,
+    separate-uncertainty=true,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+% \setlength{\tabcolsep}{4.1pt}
+\begin{tabular}{
+    ccc|
+    S[table-format=3.0]
+    S[table-format=4.0(3.0)]
+    S[table-format=3.0]
+    S[table-format=4.0(3.0)]
+}
+    \toprule
+    \bf{Sampling Method} & \multicolumn{2}{c|}{\bf{Synth Configuration}} & \multicolumn{2}{c}{$\theta_{\mathrm{AM}}$} & \multicolumn{2}{c}{$\theta_{\mathrm{FM}}$}\\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5} \cmidrule(lr){6-7}
+    \bf{($\pi$)} & {$\theta_{\mathrm{AM}}$ (Hz)} & {$\theta_{\mathrm{FM}}$ (oct/s)} & {CR $\uparrow$} & {Conv. Steps $\downarrow$} & {CR $\uparrow$} & {Conv. Steps $\downarrow$} \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$1.0 - 2.0$} & \multirow{2}{*}{$0.5 - 1.0$}  &      60\% &     3944(342) &      45\% &     4064(372) \\
+    $\theta$-IS &                              &                               & \bf 100\% & \bf 2002(324) & \bf 100\% & \bf 3134(492) \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$1.0 - 2.0$} & \multirow{2}{*}{$2.0 - 4.0$}  & \bf 100\% &     2203(135) & \bf 100\% &     1536(194) \\
+    $\theta$-IS &                              &                               & \bf 100\% & \bf 1099(173) & \bf 100\% & \bf  768(118) \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$2.8 - 8.4$} & \multirow{2}{*}{$2.0 - 4.0$}  &      95\% &     3254(250) &       0\% &           N/A \\
+    $\theta$-IS &                              &                               & \bf 100\% & \bf 1925(165) & \bf 100\% & \bf 2966(210) \\
+    \midrule
+    Uniform     & \multirow{2}{*}{$2.8 - 8.4$} & \multirow{2}{*}{$4.0 - 12.0$} & \bf 100\% &     3096(334) & \bf  95\% &     3208(235) \\
+    $\theta$-IS &                              &                               &      95\% & \bf 2253(218) & \bf  95\% & \bf 2178(173) \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_probs_315_lo_med.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_probs_315_hi_hi.png}
+\end{minipage}
+\vfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_probs_315_lo_lo.png}
+\end{minipage}
+\hfill
+\begin{minipage}{0.495\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/adaptive_scrapl_probs_315_hi_med.png}
+\end{minipage}
+\vspace{-15pt}
+\caption{SCRAPL path $\theta$-importance sampling probabilities for four different AM / FM chirplet synths calculated from 1 batch of 32 log-uniformly randomly sampled $\boldsymbol{\theta_{\mathrm{synth}}}$ values. Black dots are individual path (wavelet) AM / FM center frequency locations and each dashed rectangle is the $\boldsymbol{\theta_{\mathrm{synth}}}$ range for each synth configuration. A uniform probability ratio of 1.0 means a path is sampled with probability $1/P$.}
+\label{fig:adaptive_probs_315}
+\end{figure}
+
+\clearpage
+
+
+\section{Additional Roland TR-808 Evaluation Results}
+\label{app:eval_results_808}
+
+\begin{table}[H]
+\centering
+\caption{Drum transient evaluation results for the unsupervised Roland TR-808 DDSP synth sound matching task with 14 continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters (more details in Section~\ref{ssec:exp_808}). Uncertainties are 95\% CI for 40 training runs using different random seeds and dataset splits. Due to computational limitations, the JTFS method is only trained and evaluated for 4 random seeds.}
+\label{tab:808_transient}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=true,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+\setlength{\tabcolsep}{5.5pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures, round-precision=3] @{$\kern-15pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+}
+    \toprule
+    \bf{Method} & \multicolumn{4}{c}{\bf{Loudness $L_1 \downarrow$}} & \multicolumn{4}{c}{\bf{Spectral Centroid $L_1 \downarrow$}} & \multicolumn{4}{c}{\bf{Spectral Flatness $L_1 \downarrow$}}\\
+    \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13}
+    & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} \\
+    \midrule
+    JTFS                     & \bf 137.41 & 10.173 & \bf 157.81 & 20.188 & \bf 859.09 & 67.995 & \bf 818.84 & 96.027 &     1201.6 & 86.863  & \bf 1093.2 & 107.96 \\
+    SCRAPL\\(no $\theta$-IS) &     389.08 & 41.367 &     460.02 & 60.438 &     1016.2 & 100.82 &     992.11 & 105.88 &     1800.4 & 168.17  &     1989.6 & 182.81 \\
+    SCRAPL                   &      374.1 & 39.223 &     376.77 & 31.688 &     1000.4 & 119.05 &     1079.8 & 124.78 &     1750.9 & 273.35  &     1820.4 & 220.78 \\
+    MSS Lin.                 &     380.53 & 11.706 &     2513.3 &  477.8 &     902.25 &  26.73 &     2348.9 & 306.18 &     961.66 & 42.562  &     3624.3 & 682.71 \\
+    MSS L+L                  &     491.59 & 44.178 &     1079.7 & 91.015 &     928.21 & 65.027 &     1380.1 & 75.624 & \bf 915.66 & 49.658  &     1315.2 & 147.21 \\
+    MSS Rev.                 &     329.98 &  20.73 &     808.26 & 39.675 &     1072.4 & 49.232 &     1542.6 &  52.82 &     1393.2 & 62.272  &     2640.5 &   95.9 \\
+    MSS Rand.                &      583.8 & 75.224 &     1026.4 & 88.586 &     1202.9 &  102.2 &     1351.5 &  99.18 &     1686.2 & 118.72  &     1949.2 & 138.59 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+
+\begin{table}[H]
+\centering
+\caption{Drum decay evaluation results for the unsupervised Roland TR-808 DDSP synth sound matching task with 14 continuous $\boldsymbol{\theta_{\mathrm{synth}}}$ parameters (more details in Section~\ref{ssec:exp_808}). Uncertainties are 95\% CI for 40 training runs using different random seeds and dataset splits. Due to computational limitations, the JTFS method is only trained and evaluated for 4 random seeds.}
+\label{tab:808_decay}
+\vspace{3pt}
+\sisetup{
+    reset-text-series=false, 
+    text-series-to-math=true, 
+    mode=text,
+    tight-spacing=true,
+    table-number-alignment=center,
+    separate-uncertainty=false,
+    detect-weight=true,
+    detect-inline-weight=math,
+}
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{
+    l|
+    S[round-mode=figures, round-precision=3] @{$\kern-15pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+    S[round-mode=figures, round-precision=3] @{$\kern-20pt\pm\,$} S[round-mode=figures, round-precision=2] @{$\kern-6pt$}
+}
+    \toprule
+    \bf{Method} & \multicolumn{4}{c}{\bf{Loudness $L_1 \downarrow$}} & \multicolumn{4}{c}{\bf{Spectral Centroid $L_1 \downarrow$}} & \multicolumn{4}{c}{\bf{Spectral Flatness $L_1 \downarrow$}}\\
+    \cmidrule(lr){2-5} \cmidrule(lr){6-9} \cmidrule(lr){10-13}
+    & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} & \multicolumn{2}{c}{Micro} & \multicolumn{2}{c}{Meso} \\
+    \midrule
+    JTFS                     &     315.31 & 21.693 & \bf 354.66 & 113.05 &     614.41 & 51.362 &     616.88 & 70.523 &     526.61 & 30.696  &     718.05 & 189.71 \\
+    SCRAPL\\(no $\theta$-IS) &     1808.6 & 188.12 &       2213 & 205.34 &     1530.9 & 170.49 &     1857.2 & 171.18 &     2616.9 & 312.49  &     3297.2 & 368.31 \\
+    SCRAPL                   &     1812.6 & 164.58 &     1738.5 & 172.11 &     1485.8 & 120.79 &     1469.8 & 135.58 &     2543.6 & 290.36  &     2479.5 & 290.93 \\
+    MSS Lin.                 &      356.7 & 12.226 &       1119 & 262.84 &     654.14 & 18.114 &     1113.2 & 161.47 & \bf 472.47 & 17.429  &     1496.7 & 354.72 \\
+    MSS L+L                  &     388.69 & 41.754 &     465.71 & 45.192 & \bf 563.27 & 21.889 & \bf 596.91 & 23.813 &     565.15 & 29.374  & \bf 644.13 & 51.338 \\
+    MSS Rev.                 & \bf 279.15 & 12.279 &     493.55 & 21.609 &     589.28 & 20.909 &     801.09 & 29.465 &     552.13 & 21.875  &     846.41 & 28.668 \\
+    MSS Rand.                &     453.31 & 21.149 &     485.09 & 23.752 &     659.73 & 27.365 &     640.41 & 34.954 &     594.21 & 29.949  &     658.11 & 33.013 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage 
+
+
+\section{Experiment Training Details and Hyperparameters}
+\label{app:hyperparams}
+
+\begin{table}[H]
+\centering
+\caption{Unsupervised granular synth sound matching task hyperparameters.}
+\label{tab:granular_hyperparams}
+\vspace{3pt}
+% \setlength{\tabcolsep}{12pt}
+\begin{tabular}{
+    llr
+}
+    \toprule
+    \bf{Category} & \bf{Hyperparameter Name} & \bf{Value} \\
+    \midrule
+    Data & $N$ (\# of examples) & 5120 \\
+    & train / val / test split & 60\% / 20\% / 20\% \\
+    \midrule
+    Encoder & \# of parameters & 604 K \\
+    & CQT \# of octaves & 5 \\
+    & CQT bins / octave & 12 \\
+    & CQT hop length & 256 \\
+    & CQT postprocessing & \texttt{log1p} \\
+    & CNN \# of conv. blocks & 5 \\
+    & CNN kernel size & 5 $\times$ (3, 3) \\
+    & CNN stride & 5 $\times$ (1, 1) \\
+    & CNN pooling & 5 $\times$ (2, 2) \\
+    & CNN conv. block channels & 128 \\
+    & CNN activation function & \texttt{PReLU} \\
+    & CNN embedding dim. & 64 \\
+    & CNN dense layer dropout prob. & 0.5 \\
+    \midrule
+    Decoder (Synth) & $\dim(\boldsymbol{\theta_{\mathrm{synth}}})$ & 2 \\
+    & sampling rate & 8192 Hz \\
+    & $T$ (\# of samples) & 32768 \\
+    & max. \# of grains & 64 \\
+    & grain \# of samples & 4096 \\
+    & min. grain pitch & 256 Hz \\
+    & max. grain pitch & 2048 Hz \\
+    \midrule
+    SCRAPL \& JTFS & $J$ & 12 \\
+    & $Q_1$ & 8 \\
+    & $Q_2$ & 2 \\
+    & $J_{\mathrm{fr}}$ & 3 \\
+    & $Q_{\mathrm{fr}}$ & 2 \\
+    & $T$ & 4096 \\
+    & $F$ & 8 \\
+    & $\rho$ & identity function \\
+    & $P$ (\# of paths) & 315 \\
+    \midrule
+    $\theta$-Importance Sampling & $N_{\mathrm{IS}}$ (\# of examples) & 320 \\
+    & max. \# of deflated power iterations & 20 \\
+    \midrule
+    Training & \# of random seed training runs & 20 \\
+    & epochs & 200 \\
+    & batch size & 32 \\
+    & starting learning rate & $1 \times 10^{-5}$ \\
+    & learning rate scheduler & none \\
+    & Adam $\beta_1$ & 0.9 \\
+    & Adam $\beta_2$ & 0.999 \\
+    & weight decay & 0.01 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+
+\begin{table}[H]
+\centering
+\caption{Unsupervised AM / FM chirplet synth sound matching task hyperparameters.}
+\label{tab:chirplet_hyperparams}
+\vspace{3pt}
+% \setlength{\tabcolsep}{12pt}
+\begin{tabular}{
+    llr
+}
+    \toprule
+    \bf{Category} & \bf{Hyperparameter Name} & \bf{Value} \\
+    \midrule
+    Data & $N$ (\# of examples) & 5120 \\
+    & train / val / test split & 60\% / 20\% / 20\% \\
+    \midrule
+    Encoder & \# of parameters & 604 K \\
+    & CQT \# of octaves & 5 \\
+    & CQT bins / octave & 12 \\
+    & CQT hop length & 256 \\
+    & CQT postprocessing & \texttt{log1p} \\
+    & CNN \# of conv. blocks & 5 \\
+    & CNN kernel size & 5 $\times$ (3, 3) \\
+    & CNN stride & 5 $\times$ (1, 1) \\
+    & CNN pooling & 5 $\times$ (2, 2) \\
+    & CNN conv. block channels & 128 \\
+    & CNN activation function & \texttt{PReLU} \\
+    & CNN embedding dim. & 64 \\
+    & CNN dense layer dropout prob. & 0.5 \\
+    \midrule
+    Decoder (Synth) & $\dim(\boldsymbol{\theta_{\mathrm{synth}}})$ & 2 \\
+    & sampling rate & 8192 Hz \\
+    & $T$ (\# of samples) & 32768 \\
+    & chirplet center frequency & 512 Hz \\
+    & chirplet bandwidth & 2 octaves \\
+    & min. time shift & -2048 samples \\
+    & max. time shift & +2048 samples \\
+    \midrule
+    SCRAPL \& JTFS & $J$ & 12 \\
+    & $Q_1$ & 8 \\
+    & $Q_2$ & 2 \\
+    & $J_{\mathrm{fr}}$ & 3 \\
+    & $Q_{\mathrm{fr}}$ & 2 \\
+    & $T$ & 4096 \\
+    & $F$ & 8 \\
+    & $\rho$ & identity function \\
+    & $P$ (\# of paths) & 315 \\
+    \midrule
+    $\theta$-Importance Sampling & $N_{\mathrm{IS}}$ (\# of examples) & 32 \\
+    & max. \# of deflated power iterations & 20 \\
+    \midrule
+    Training & \# of random seed training runs & 20 \\
+    & epochs & 50 \\
+    & batch size & 32 \\
+    & starting learning rate & $1 \times 10^{-4}$ \\
+    & learning rate scheduler & none \\
+    & Adam $\beta_1$ & 0.9 \\
+    & Adam $\beta_2$ & 0.999 \\
+    & weight decay & 0.01 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+
+
+\begin{table}[H]
+\centering
+\caption{Unsupervised Roland TR-808 synth sound matching task hyperparameters.}
+\label{tab:808_hyperparams}
+\vspace{3pt}
+% \setlength{\tabcolsep}{12pt}
+\begin{tabular}{
+    llr
+}
+    \toprule
+    \bf{Category} & \bf{Hyperparameter Name} & \bf{Value} \\
+    \midrule
+    Data & $N$ (\# of examples) & 681 \\
+    & $N_{\text{bass drum}}$ & 215 \\
+    & $N_{\text{snare}}$ & 240 \\
+    & $N_{\text{tom}}$ & 189 \\
+    & $N_{\text{hi-hat}}$ & 37 \\
+    & $N_{\text{train}}$ & 425 \\
+    & $N_{\text{val}}$ & 128 \\
+    & $N_{\text{test}}$ & 128 \\
+    \midrule
+    Encoder & \# of parameters & 724 K \\
+    & CQT \# of octaves & 9 \\
+    & CQT bins / octave & 12 \\
+    & CQT hop length & 256 \\
+    & CQT postprocessing & \texttt{log1p} \\
+    & CNN \# of conv. blocks & 5 \\
+    & CNN kernel size & 5 $\times$ (3, 3) \\
+    & CNN stride & 5 $\times$ (1, 1) \\
+    % & CNN pooling & 2 $\times$ (2, 2), 1 $\times$ (2, 3), 2 $\times$ (3, 3) \\
+    & CNN pooling & (2, 2), (2, 2), (2, 3), (3, 3), (3, 3) \\
+    & CNN conv. block channels & 128 \\
+    & CNN activation function & \texttt{PReLU} \\
+    & CNN embedding dim. & 128 \\
+    & CNN dense layer dropout prob. & 0.25 \\
+    \midrule
+    Decoder (Synth) & $\dim(\boldsymbol{\theta_{\mathrm{synth}}})$ & 14 \\
+    & sampling rate & 44100 Hz \\
+    & $T$ (\# of samples) & 44100 \\
+    & min. time shift & -2048 samples \\
+    & max. time shift & +2048 samples \\
+    \midrule
+    SCRAPL \& JTFS & $J$ & 12 \\
+    & $Q_1$ & 8 \\
+    & $Q_2$ & 2 \\
+    & $J_{\mathrm{fr}}$ & 5 \\
+    & $Q_{\mathrm{fr}}$ & 2 \\
+    & $T$ & 2048 \\
+    & $F$ & 1 \\
+    & $\rho$ & \texttt{log1p} \\
+    & $P$ (\# of paths) & 483 \\
+    \midrule
+    $\theta$-Importance Sampling & $N_{\mathrm{IS}}$ (\# of examples) & 16 \\
+    & max. \# of deflated power iterations & 20 \\
+    \midrule
+    Training & \# of random seed training runs & 40 \\
+    & epochs & 50 \\
+    & batch size & 8 \\
+    & starting learning rate & $1 \times 10^{-4}$ \\
+    & learning rate scheduler & linearly decreasing until $1 \times 10^{-5}$ \\
+    & Adam $\beta_1$ & 0.9 \\
+    & Adam $\beta_2$ & 0.999 \\
+    & weight decay & 0.01 \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

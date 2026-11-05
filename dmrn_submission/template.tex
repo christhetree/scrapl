@@ -1,0 +1,161 @@
+% --------------------------------------------------------------------------
+% Template for DMRN 2025 paper; to be used with:
+%          dmrn2025.sty  - DMRN 2025 LaTeX style file
+% Adapted from dcase2016.sty
+% --------------------------------------------------------------------------
+
+\documentclass{article}
+\usepackage{caption}
+\usepackage{times,amsmath,graphicx,url,dmrn2025}
+\usepackage{indentfirst}
+\setlength{\parskip}{0.5em}
+
+% smaller font size for captions
+\captionsetup[figure]{font=footnotesize,labelfont=footnotesize}
+\captionsetup[table]{font=footnotesize,labelfont=footnotesize}
+
+% reduce blank space after figures
+\setlength{\belowcaptionskip}{-10pt}
+
+% Example definitions.
+% --------------------
+\def\defeqn{\stackrel{\triangle}{=}}
+\newcommand{\symmat}[1]{{\mbox{\boldmath $#1$}}}
+
+% roman numbering of sections
+\renewcommand{\thesection}{\Roman{section}} 
+
+% Title.
+% --------------------
+\title{Template for Preparation of One-Page Papers for DMRN}
+
+% Single addresses (uncomment and modify for single-address case).
+% --------------------
+% \oneauthor
+% {Given-name Family-name(Surname)\sthanks{Research supported by ABC Foundation.}}
+% {Department/Research Institute, University, Country}
+% {john@fictional.edu}
+
+% Two addresses
+% --------------------
+\twoauthors
+ {Given-name Family-name (Surname)\sthanks{Research supported by ABC Foundation.}}
+    {Department/Research Institute, University, Country}
+    {email@presenting.author}
+ {Given-name Family-name (Surname)\sthanks{Thanks to XYZ agency for funding.}}
+    {Department/Research Institute, University, Country}
+
+% Three Authors (use /threeauthorssingle for single affiliation)
+% -------------
+%\threeauthors
+% {Given-name Family-name \sthanks{Research supported by ABC Foundation.}}
+%    {Department/Research Institute, University, Country}
+%    {email@presenting.author}
+% {Given-name Family-name \sthanks{Thanks to XYZ agency for funding.}}
+%    {Department/Research Institute, University, Country}
+% {Given-name Family-name \sthanks{Thanks to DEF agency for funding.}}
+%    {Department/Research Institute, University, Country}
+    
+    
+
+\begin{document}
+%\ninept
+\tenpt
+\maketitle
+
+\begin{sloppy}
+\begin{abstract}
+This document is a template for \LaTeX\ for the submission of a one-page paper to DMRN. 
+\end{abstract}
+
+\begin{keywords}
+One, two, three, four, five
+\end{keywords}
+
+\section{Headings}
+\label{sec:headings}
+This template provides authors with most of the formatting specifications needed for preparing electronic versions of their papers. A brief abstract (containing text only) must also be entered in the above ``Abstract'' headed text box.
+
+Headings may be used as required. Please adopt the Small-Caps heading style. References and figures may be included if necessary. But the overall paper cannot exceed the one page limit. Do not change the margins, column widths, font sizes or line spacing to squeeze more text into the page. Use \textit{italics} for emphasis; do not underline. 
+
+\section{Others}
+\label{sec:others}
+Define abbreviations and acronyms the first time they are used in the text, even after they have been defined in the abstract. Do not use abbreviations in the title or heads unless they are unavoidable. Use either SI (MKS) or CGS as primary units (SI units are encouraged).
+
+%You will need to determine whether or not your equation should be typed using either the Times New Roman or the Symbol font (please no other font). To create multileveled equations, it may be necessary to treat the equation as a graphic.%
+Equation numbers, within parentheses, are to position flush right, as in (1). Italicize Roman symbols for quantities and variables, but not Greek symbols. Use a long dash rather than a hyphen for a minus sign. Be sure that the symbols in your equation have been defined before or immediately following the equation.
+\begin{equation}
+\alpha + \beta = \gamma
+\end{equation}
+
+Figure captions should be below the figures; table heads should appear above the tables. Insert figures and tables after they are cited in the text. Use the abbreviation “Fig. 1”, even at the beginning of a sentence.
+
+Use the caption package to declare smaller font sizes for figure and table labels. Use words rather than symbols or abbreviations when writing Figure axis labels to avoid confusing the reader. If including units in the label, present them within parentheses. Do not label axes only with units. In the example, write “Magnetization (A/m)”, not just “A/m”. Do not label axes with a ratio of quantities and units. For example, write “Temperature (K)”, not “Temperature/K.”
+
+% Below is an example of how to insert images and how to create tables. 
+% -------------------------------------------------------------------------
+\begin{table}[t]
+    \centering
+    \caption{Table Type Styles.}
+    \begin{tabular}{ |c|c|c| } \hline
+    \multicolumn{3}{|c|}{\textbf{Table Head}} \\ \hline
+    \textbf{\textit{Table column subhead}} & \textbf{\textit{Subhead}} & \textbf{\textit{Subhead}}\\ \hline
+    {More table copy} & {} & {} \\ \hline
+    \end{tabular}
+    \label{modules}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \centerline{\includegraphics[scale=0.5]{fig1a}}
+  \caption{Example of a figure with experimental results.}
+  \label{fig:results}
+\end{figure}
+
+\section{References}
+List and number all bibliographical references at the end of the paper. The references should be numbered in order of appearance in the document. When referring to them in the text, type the corresponding reference number in square brackets as shown at the end of this sentence \cite{cJones2003, eWilliams1999}. For \LaTeX\ users, the use of the BibTEX style  file  \texttt{IEEEtran.bst} is  recommended,  which  is  included  in  the \LaTeX\ paper kit available from the DMRN 2025 website \cite{dmrn2025}.
+
+\section{Acknowledgments}
+\label{sec:ack}
+The preferred spelling of ``acknowledgment'' is without an “e” after the “g”. Avoid ``One of us (R. B. G.) thanks''; try ``R. B. G. thanks''. Put sponsor acknowledgments in the footnote.
+
+% -------------------------------------------------------------------------
+% Either list references using the bibliography style file IEEEtran.bst
+\bibliographystyle{IEEEtran}
+{\footnotesize\bibliography{refs}}
+%\bibliography{refs}
+%
+% or list them by yourself
+% \begin{thebibliography}{9}
+% 
+% \bibitem{dcase2016web}
+%   \url{http://www.cs.tut.fi/sgn/arg/dcase2016/}.
+%
+% \bibitem{IEEEPDFSpec}
+%   {PDF} specification for {IEEE} {X}plore$^{\textregistered}$,
+%   \url{http://www.ieee.org/portal/cms_docs/pubs/confstandards/pdfs/IEEE-PDF-SpecV401.pdf}.
+%
+% \bibitem{PDFOpenSourceTools}
+%   Creating high resolution {PDF} files for book production with 
+%   open source tools, 
+%   \url{http://www.grassbook.org/neteler/highres_pdf.html}.
+%
+% \bibitem{eWilliams1999}
+% E. Williams, \emph{Fourier Acoustics: Sound Radiation and Nearfield Acoustic
+%   Holography}. London, UK: Academic Press, 1999.
+% 
+% \bibitem{ieeecopyright}
+%   \url{http://www.ieee.org/web/publications/rights/copyrightmain.html}.
+%
+% \bibitem{cJones2003}
+% C. Jones, A. Smith, and E. Roberts, ``A sample paper in conference
+%   proceedings,'' in \emph{Proc. IEEE ICASSP}, vol. II, 2003, pp. 803--806.
+% 
+% \bibitem{aSmith2000}
+% A. Smith, C. Jones, and E. Roberts, ``A sample paper in journals,'' 
+%   \emph{IEEE Trans. Signal Process.}, vol. 62, pp. 291--294, Jan. 2000.
+% 
+% \end{thebibliography}
+
+\end{sloppy}
+\end{document}
