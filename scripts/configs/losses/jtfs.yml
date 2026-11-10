@@ -1,0 +1,16 @@
+class_path: losses.JTFSTLoss
+init_args:
+  shape: 32768
+#  J: 12
+  J: 2
+#  Q1: 8
+  Q1: 1
+  Q2: 2
+#  J_fr: 3
+  J_fr: 1
+#  Q_fr: 2
+  Q_fr: 1
+  T: null
+  F: null
+  format_: joint
+  p: 2

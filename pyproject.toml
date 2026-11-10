@@ -42,6 +42,12 @@ test = [
     "pytest>=8.0.0",
     "tqdm>=4.66.0",
 ]
+dmrn = [
+    "auraloss>=0.4.0",
+    "pandas>=3.1.1",
+    "pyyaml>=6.0.3",
+    "tqdm>=4.70.1",
+]
 
 [project.urls]
 Website = "https://christhetree.github.io/scrapl/"

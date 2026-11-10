@@ -1,8 +1,6 @@
 import logging
 import os
 
-from nnAudio.features import CQT
-
 os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 
 from typing import Callable, Any, Dict, Optional, Tuple
@@ -13,6 +11,7 @@ from tqdm import tqdm
 from src import util
 from src.paths import CONFIGS_DIR, OUT_DIR
 
+from nnAudio.features import CQT
 from torch import Tensor as T, nn
 import torch as tr
 from torch.utils import benchmark
@@ -46,18 +45,24 @@ def calc_benchmark_stats(
     device: str,
     num_threads: int = 1,
     min_run_time: float = 1.0,
+    stmt: str = "fn(x, x_hat, loss_func, path_idx)",
 ) -> Tuple[float, float, int, float]:
+    # Measure peak memory relative to what is already allocated (model weights,
+    # other loss modules, persistent .grad buffers) so rows are not cumulative
+    base_mem = 0
     if device.startswith("cuda"):
+        base_mem = tr.cuda.memory_allocated(device)
         tr.cuda.reset_peak_memory_stats(device)
     result: Measurement = benchmark.Timer(
-        stmt="fn(x, x_hat, loss_func, path_idx)",
+        stmt=stmt,
         globals=globals,
         num_threads=num_threads,
     ).blocked_autorange(min_run_time=min_run_time)
     max_mem = 0.0
     if device.startswith("cuda"):
-        max_mem = tr.cuda.max_memory_allocated(device) / (1024**2)
-    n_runs = len(result.times)
+        max_mem = (tr.cuda.max_memory_allocated(device) - base_mem) / (1024**2)
+    # result.times has one entry per measurement block of number_per_run calls
+    n_runs = len(result.raw_times) * result.number_per_run
     return result.median, result.iqr, n_runs, max_mem
 
 
@@ -81,17 +86,15 @@ def main() -> None:
     clap_loss = util.load_class_from_yaml(config_path)
     config_path = os.path.join(CONFIGS_DIR, "losses/panns_wglm.yml")
     panns_wglm_loss = util.load_class_from_yaml(config_path)
+    # TODO(cm): disable resampling
+    # clap_loss.set_resampler(clap_loss.get_model_sr())
+    # panns_wglm_loss.set_resampler(panns_wglm_loss.get_model_sr())
     config_path = os.path.join(CONFIGS_DIR, "losses/jtfs.yml")
     jtfs_loss = util.load_class_from_yaml(config_path)
-    config_path = os.path.join(CONFIGS_DIR, "losses/scrapl.yml")
-    scrapl_loss = util.load_class_from_yaml(config_path)
-    n_paths = scrapl_loss.n_paths
 
-    x = tr.rand((batch_size, 1, n_samples))
-    x_hat = tr.rand((batch_size, 1, n_samples))
-    x_hat.requires_grad_(True)
-    x = x.to(device)
-    x_hat = x_hat.to(device)
+    # Create directly on device so x_hat is a leaf (no GPU -> CPU grad copy)
+    x = tr.rand((batch_size, 1, n_samples), device=device)
+    x_hat = tr.rand((batch_size, 1, n_samples), device=device, requires_grad=True)
 
     df_cols = ["name", "median_time", "iqr", "n_runs", "max_mem_MB"]
     df_rows = []
@@ -124,6 +127,9 @@ def main() -> None:
         )
         df_rows.append((name,) + row)
 
+    config_path = os.path.join(CONFIGS_DIR, "losses/scrapl.yml")
+    scrapl_loss = util.load_class_from_yaml(config_path)
+    n_paths = scrapl_loss.n_paths
     scrapl_rows = []
     scrapl_loss = scrapl_loss.to(device)
     globals["loss_func"] = scrapl_loss
@@ -140,7 +146,7 @@ def main() -> None:
 
     scrapl_df = pd.DataFrame(scrapl_rows, columns=df_cols)
     print(scrapl_df.to_string(index=False))
-    save_path = os.path.join(OUT_DIR, "scrapl_benchmark.csv")
+    save_path = os.path.join(OUT_DIR, "scrapl_benchmark.tsv")
     scrapl_df.to_csv(save_path, index=False, sep="\t")
 
     df_rows.append(
@@ -154,7 +160,7 @@ def main() -> None:
     )
     df = pd.DataFrame(df_rows, columns=df_cols)
     print(df.to_string(index=False))
-    save_path = os.path.join(OUT_DIR, "benchmark.tsv")
+    save_path = os.path.join(OUT_DIR, f"benchmark_{device}.tsv")
     df.to_csv(save_path, index=False, sep="\t")
 
 
@@ -167,21 +173,21 @@ if __name__ == "__main__":
     model = util.load_class_from_yaml(model_config)
     for p in model.parameters():
         p.requires_grad_(True)
-        log.info(f"p.requires_grad: {p.requires_grad}")
+        # log.info(f"p.requires_grad: {p.requires_grad}")
     model = model.to(device)
     synth_config = os.path.join(CONFIGS_DIR, "synths/chirp_texture_8khz.yml")
     synth = util.load_class_from_yaml(synth_config)
     synth = synth.to(device)
 
     cqt_params = {
-            "sr": synth.sr,
-            "bins_per_octave": synth.Q,
-            "n_bins": synth.J_cqt * synth.Q,
-            "hop_length": synth.hop_len,
-            # TODO: check this
-            "fmin": (0.4 * synth.sr) / (2**synth.J_cqt),
-            "output_format": "Magnitude",
-            "verbose": False,
+        "sr": synth.sr,
+        "bins_per_octave": synth.Q,
+        "n_bins": synth.J_cqt * synth.Q,
+        "hop_length": synth.hop_len,
+        # TODO: check this
+        "fmin": (0.4 * synth.sr) / (2**synth.J_cqt),
+        "output_format": "Magnitude",
+        "verbose": False,
     }
     cqt = CQT(**cqt_params)
     cqt = cqt.to(device)
@@ -207,19 +213,14 @@ if __name__ == "__main__":
         "fn": model_step,
     }
 
-    if device.startswith("cuda"):
-        tr.cuda.reset_peak_memory_stats(device)
-    result: Measurement = benchmark.Timer(
-        stmt="fn(x, seed, loss_func)",
+    median_time, iqr, n_runs, max_mem = calc_benchmark_stats(
         globals=globals,
+        device=device,
         num_threads=num_threads,
-    ).blocked_autorange(min_run_time=min_run_time)
-    max_mem = 0.0
-    if device.startswith("cuda"):
-        max_mem = tr.cuda.max_memory_allocated(device) / (1024**2)
-    n_runs = len(result.times)
-
+        min_run_time=min_run_time,
+        stmt="fn(x, seed, loss_func)",
+    )
     print(
-        f"model_step: median_time={result.median}, iqr={result.iqr}, "
+        f"model_step: median_time={median_time}, iqr={iqr}, "
         f"n_runs={n_runs}, max_mem_MB={max_mem}"
     )

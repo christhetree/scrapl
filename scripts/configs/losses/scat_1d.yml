@@ -1,0 +1,12 @@
+class_path: losses.Scat1DLoss
+init_args:
+  shape: 32768
+#  J: 12
+  J: 2
+#  Q1: 8
+  Q1: 1
+  Q2: 2
+  T: null
+#  T: 64
+  max_order: 2
+  p: 2
