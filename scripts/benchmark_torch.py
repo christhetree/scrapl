@@ -93,6 +93,21 @@ def calc_cpu_peak_mem_mb(stmt: str, globals: Dict[str, Any], num_threads: int) -
     return peak_bytes / (1024**2)
 
 
+def calc_cuda_peak_mem_mb(stmt: str, globals: Dict[str, Any], device: str) -> float:
+    """
+    Peak CUDA memory (MB) allocated while running `stmt` once, relative to what was
+    already allocated beforehand (other loss modules, persistent .grad buffers) so
+    rows are not cumulative.
+    """
+    tr.cuda.synchronize(device)
+    base_mem = tr.cuda.memory_allocated(device)
+    tr.cuda.reset_peak_memory_stats(device)
+    eval(stmt, dict(globals))
+    tr.cuda.synchronize(device)
+    peak_bytes = tr.cuda.max_memory_allocated(device) - base_mem
+    return peak_bytes / (1024**2)
+
+
 def calc_benchmark_stats(
     globals: Dict[str, Any],
     device: str,
@@ -100,21 +115,17 @@ def calc_benchmark_stats(
     min_run_time: float = 1.0,
     stmt: str = "fn(x, x_hat, loss_func, path_idx)",
 ) -> Tuple[float, float, int, float]:
-    # Measure peak memory relative to what is already allocated (other loss
-    # modules, persistent .grad buffers) so rows are not cumulative
-    base_mem = 0
-    if device.startswith("cuda"):
-        base_mem = tr.cuda.memory_allocated(device)
-        tr.cuda.reset_peak_memory_stats(device)
     result: Measurement = benchmark.Timer(
         stmt=stmt,
         globals=globals,
         num_threads=num_threads,
     ).blocked_autorange(min_run_time=min_run_time)
+    # Peak memory from a separate untimed steady-state pass after the Timer's
+    # warmup, so first-call allocations are excluded and the CPU profiler
+    # overhead does not affect the timings
     if device.startswith("cuda"):
-        max_mem = (tr.cuda.max_memory_allocated(device) - base_mem) / (1024**2)
+        max_mem = calc_cuda_peak_mem_mb(stmt, globals, device)
     else:
-        # Separate untimed pass so profiler overhead does not affect the timings
         max_mem = calc_cpu_peak_mem_mb(stmt, globals, num_threads)
     # result.times has one entry per measurement block of number_per_run calls
     n_runs = len(result.raw_times) * result.number_per_run
