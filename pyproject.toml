@@ -44,6 +44,7 @@ test = [
 ]
 dmrn = [
     "auraloss>=0.4.0",
+    "korvax>=0.3.0",
     "pandas>=3.1.1",
     "pyyaml>=6.0.3",
     "tqdm>=4.70.1",
@@ -68,6 +69,12 @@ module-root = "."
 # Only use uv-managed Python installs, never system ones. The lockfile's supported
 # Python range comes from `requires-python`; the dev interpreter from `.python-version`.
 python-preference = "only-managed"
+
+# korvax has no macOS 14 wheels (only macOS 15+), so it is built from source there,
+# which needs OpenMP. Apple Clang does not include it, so use Homebrew's libomp
+# (`brew install libomp`). Only used when building korvax from source.
+[tool.uv.extra-build-variables]
+korvax = { OpenMP_ROOT = "/opt/homebrew/opt/libomp" }
 
 # Pytest configuration
 [tool.pytest.ini_options]

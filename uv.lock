@@ -267,6 +267,24 @@ wheels = [
 ]
 
 [[package]]
+name = "korvax"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jax" },
+    { name = "jaxtyping" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/db/e0/c994be42d44064bc70775981b3542f0289929c885348fc69940e1a28f611/korvax-0.3.0.tar.gz", hash = "sha256:f084bd7ed8ff3ea44d61898c4c524ed91ecdea8ef51c873d4913f566b1b3096f", size = 31538, upload-time = "2025-11-30T21:33:05.436Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bc/bc/d32fb79950f7f5f41f3e4857302ad337ade8d091e449ad4277bf6593993e/korvax-0.3.0-cp313-cp313-macosx_15_0_arm64.whl", hash = "sha256:e39d34aeb72f9519cab98ea5692e9c9108be99c1bc2908b5b66f1c3d8a0df1e9", size = 324885, upload-time = "2025-11-30T21:32:55.958Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/2d/a7f5c7129043608ad83260d7e2ac2f18c23d6f62663ce00ef9bf9dfaf181/korvax-0.3.0-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6a71212929d556aa660fdd8299a9066673486bf3fb0a49161f7d733658d45d64", size = 490574, upload-time = "2025-11-30T21:32:57.03Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/11/7d015e6a7e1be5bba16498c65f944ccd28f7274edbcfd4c3cb8d640fe584/korvax-0.3.0-cp314-cp314-macosx_15_0_arm64.whl", hash = "sha256:9eb08fe5df29b9ba93183f4c51d8c09838d9904488915411cce43a97b7a18620", size = 324922, upload-time = "2025-11-30T21:32:58.535Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/94/d6b6b9ef7fdf76d9b2dd80a7e0c9edb24d718835273ea63d601a7be8cb0d/korvax-0.3.0-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b14449bc209213c4eb85ebd0d6667eb42a095ff47d2ef046c777c08a040b91c6", size = 490514, upload-time = "2025-11-30T21:33:01.017Z" },
+    { url = "https://files.pythonhosted.org/packages/df/da/5ba7c738e75a290371226ff19471cb30d4744ca791c098cfc2bde643c71c/korvax-0.3.0-cp314-cp314t-macosx_15_0_arm64.whl", hash = "sha256:e9f3a2ff61a7999e58efaf319e1648dbfb49bce5d62d6d7a9e8929c3ee954d7e", size = 325562, upload-time = "2025-11-30T21:33:02.993Z" },
+    { url = "https://files.pythonhosted.org/packages/42/ce/88af9add488b527c39fb2f0930ea203a5dcfe469c2aadfd56273e1ccb501/korvax-0.3.0-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ff123a821aeb0706d97ccaded2ef6c9cb3c1cb7260456580f3ccf2be8c5b9d4d", size = 492038, upload-time = "2025-11-30T21:33:04.283Z" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -924,6 +942,7 @@ dependencies = [
 [package.optional-dependencies]
 dmrn = [
     { name = "auraloss" },
+    { name = "korvax" },
     { name = "pandas" },
     { name = "pyyaml" },
     { name = "tqdm" },
@@ -952,6 +971,7 @@ requires-dist = [
     { name = "equinox", marker = "extra == 'jax'", specifier = ">=0.11.5" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.5.0" },
     { name = "jaxtyping", marker = "extra == 'jax'", specifier = ">=0.2.20" },
+    { name = "korvax", marker = "extra == 'dmrn'", specifier = ">=0.3.0" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "optax", marker = "extra == 'jax'", specifier = ">=0.2.5" },
     { name = "packaging", marker = "extra == 'torch'", specifier = ">=20.0" },

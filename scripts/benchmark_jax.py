@@ -1,8 +1,9 @@
 """
-Benchmarks the runtime and peak memory of a JIT compiled forward and backward pass of
-the scat_1d, jtfs, and scrapl (per path) losses in JAX. The JAX equivalent of
-benchmark_torch.py (there are no JAX implementations of the MSS losses), using the
-same loss configs, and only needs the root scrapl-loss environment (no PyTorch).
+Benchmarks the runtime, peak memory, and FLOPs of a JIT compiled forward and backward
+pass of the mss_log, mss_rev, scat_1d, jtfs, and scrapl (per path) losses in JAX. The
+JAX equivalent of benchmark_torch.py (the MSS losses use korvax for the STFT), using
+the same loss configs, and only needs the root scrapl-loss environment with the dmrn
+extra (no PyTorch).
 
 Run from the repository root with: uv run python scripts/benchmark_jax.py
 """
@@ -40,7 +41,7 @@ import yaml
 from jax.stages import Compiled
 from jaxtyping import Array, Float
 
-from losses_jax import JTFSTLoss, Scat1DLoss
+from losses_jax import JTFSTLoss, LogMSSLoss, MultiResolutionSTFTLoss, Scat1DLoss
 from scrapl.jax import SCRAPLLoss
 
 logging.basicConfig()
@@ -77,11 +78,14 @@ def compile_benchmark_fn(
     x: Float[Array, "bs n_ch n_samples"],
     x_hat: Float[Array, "bs n_ch n_samples"],
     path_idx: Optional[int] = None,
-) -> Tuple[Compiled, float]:
+) -> Tuple[Compiled, float, float]:
     """
     Ahead-of-time JIT compiles a forward and backward pass (the gradient w.r.t.
     x_hat) of `loss_func`. `path_idx` must be a Python int, so each SCRAPL path is
-    compiled separately. Returns the compiled function and the compilation time.
+    compiled separately. Returns the compiled function, the compilation time, and
+    the FLOPs estimated by XLA's HloCostAnalysis. FLOPs are estimated before XLA's
+    optimizations (e.g. fusion), so they do not depend on the device (transcendental
+    ops such as sqrt and log are counted separately by XLA, so they are not included).
     """
 
     def fn(x_hat: Float[Array, "..."], x: Float[Array, "..."]) -> Float[Array, ""]:
@@ -90,9 +94,11 @@ def compile_benchmark_fn(
         return loss_func(x_hat, x, path_idx=path_idx)
 
     start = time.perf_counter()
-    compiled = jax.jit(jax.value_and_grad(fn)).lower(x_hat, x).compile()
+    lowered = jax.jit(jax.value_and_grad(fn)).lower(x_hat, x)
+    compiled = lowered.compile()
     compile_time = time.perf_counter() - start
-    return compiled, compile_time
+    flops = lowered.cost_analysis().get("flops", 0.0)  # XLA omits zero counts
+    return compiled, compile_time, flops
 
 
 def time_n_calls(fn: Callable[..., Any], args: Tuple[Any, ...], number: int) -> float:
@@ -167,15 +173,15 @@ def calc_benchmark_stats(
     x_hat: Float[Array, "bs n_ch n_samples"],
     min_run_time: float = 1.0,
     path_idx: Optional[int] = None,
-) -> Tuple[float, float, int, float]:
-    compiled, compile_time = compile_benchmark_fn(loss_func, x, x_hat, path_idx)
+) -> Tuple[float, float, int, float, float]:
+    compiled, compile_time, flops = compile_benchmark_fn(loss_func, x, x_hat, path_idx)
     log.info(f"Compiled in {compile_time:.2f} s")
     times, number = blocked_autorange(compiled, (x_hat, x), min_run_time)
     # Linear interpolation, the same as torch.quantile in torch.utils.benchmark
     q1, median, q3 = np.quantile(times, [0.25, 0.5, 0.75])
     n_runs = len(times) * number
     max_mem = calc_peak_mem_mb(compiled)
-    return float(median), float(q3 - q1), n_runs, max_mem
+    return float(median), float(q3 - q1), n_runs, max_mem, flops
 
 
 def main() -> None:
@@ -187,6 +193,10 @@ def main() -> None:
     log.info(f"JAX devices: {jax.devices()}")
     os.makedirs(OUT_DIR, exist_ok=True)
 
+    config_path = os.path.join(CONFIGS_DIR, "losses/mss_meso_log.yml")
+    mss_log_loss = load_class_from_yaml(config_path, MultiResolutionSTFTLoss)
+    config_path = os.path.join(CONFIGS_DIR, "losses/mss_revisited.yml")
+    mss_rev_loss = load_class_from_yaml(config_path, LogMSSLoss)
     config_path = os.path.join(CONFIGS_DIR, "losses/scat_1d.yml")
     scat_1d_loss = load_class_from_yaml(config_path, Scat1DLoss)
     config_path = os.path.join(CONFIGS_DIR, "losses/jtfs.yml")
@@ -197,9 +207,11 @@ def main() -> None:
     x = jax.random.uniform(key_x, (batch_size, 1, n_samples))
     x_hat = jax.random.uniform(key_x_hat, (batch_size, 1, n_samples))
 
-    df_cols = ["name", "median_time", "iqr", "n_runs", "max_mem_MB"]
+    df_cols = ["name", "median_time", "iqr", "n_runs", "max_mem_MB", "flops"]
     df_rows = []
     loss_funcs = [
+        ("mss_log", mss_log_loss),
+        ("mss_rev", mss_rev_loss),
         ("scat_1d", scat_1d_loss),
         ("jtfs", jtfs_loss),
     ]
@@ -235,15 +247,20 @@ def main() -> None:
         save_path = os.path.join(OUT_DIR, f"scrapl_benchmark_jax_{device}.tsv")
         scrapl_df.to_csv(save_path, index=False, sep="\t")
 
-        df_rows.append(
-            (
-                "scrapl",
-                scrapl_df["median_time"].median(),
-                scrapl_df["iqr"].median(),
-                scrapl_df["n_runs"].median(),
-                scrapl_df["max_mem_MB"].max(),
+        # Aggregated over the paths with the median (scrapl) and the mean (scrapl_mean,
+        # the expected cost of a step when paths are sampled uniformly). Peak memory
+        # is the max over the paths for both.
+        for name, agg in [("scrapl", "median"), ("scrapl_mean", "mean")]:
+            df_rows.append(
+                (
+                    name,
+                    scrapl_df["median_time"].agg(agg),
+                    scrapl_df["iqr"].agg(agg),
+                    scrapl_df["n_runs"].agg(agg),
+                    scrapl_df["max_mem_MB"].max(),
+                    scrapl_df["flops"].agg(agg),
+                )
             )
-        )
     df = pd.DataFrame(df_rows, columns=df_cols)
     print(df.to_string(index=False))
     save_path = os.path.join(OUT_DIR, f"benchmark_jax_{device}.tsv")

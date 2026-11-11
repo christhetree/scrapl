@@ -204,15 +204,19 @@ def main() -> None:
         save_path = os.path.join(OUT_DIR, f"scrapl_benchmark_torch_{device}.tsv")
         scrapl_df.to_csv(save_path, index=False, sep="\t")
 
-        df_rows.append(
-            (
-                "scrapl",
-                scrapl_df["median_time"].median(),
-                scrapl_df["iqr"].median(),
-                scrapl_df["n_runs"].median(),
-                scrapl_df["max_mem_MB"].max(),
+        # Aggregated over the paths with the median (scrapl) and the mean (scrapl_mean,
+        # the expected cost of a step when paths are sampled uniformly). Peak memory
+        # is the max over the paths for both.
+        for name, agg in [("scrapl", "median"), ("scrapl_mean", "mean")]:
+            df_rows.append(
+                (
+                    name,
+                    scrapl_df["median_time"].agg(agg),
+                    scrapl_df["iqr"].agg(agg),
+                    scrapl_df["n_runs"].agg(agg),
+                    scrapl_df["max_mem_MB"].max(),
+                )
             )
-        )
     df = pd.DataFrame(df_rows, columns=df_cols)
     print(df.to_string(index=False))
     save_path = os.path.join(OUT_DIR, f"benchmark_torch_{device}.tsv")
