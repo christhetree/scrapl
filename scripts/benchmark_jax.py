@@ -22,8 +22,11 @@ min_run_time = 5.0
 device = "cpu"
 # device = "cuda"
 run_scrapl = True
+compilation_cache_dir = None
+# compilation_cache_dir = os.path.join(util.ROOT_DIR, "jax_cache")
 
-util.setup_jax_env(device, num_threads)  # Before JAX is imported
+# Before JAX is imported
+util.setup_jax_env(device, num_threads, compilation_cache_dir)
 
 import logging
 

@@ -283,14 +283,24 @@ def benchmark_scrapl_paths_torch(
 
 
 # JAX ============================================================================
-def setup_jax_env(device: str, num_threads: int) -> None:
-    """Configures JAX, which must be done before it is imported."""
+def setup_jax_env(
+    device: str, num_threads: int, compilation_cache_dir: Optional[str] = None
+) -> None:
+    """
+    Configures JAX, which must be done before it is imported. If
+    `compilation_cache_dir` is given, compiled functions are cached on disk there and
+    loaded in later runs (only those that took at least 1 s to compile). The
+    compile_time and compile_cpu_time of a cached function then measure loading it,
+    so delete the directory first to measure the compilation.
+    """
     if "jax" in sys.modules:
         log.warning(
             "JAX was imported before setup_jax_env, so the device and number of "
             "threads may not be applied"
         )
-    os.environ["JAX_PLATFORMS"] = device
+    # On GPU, the CPU backend is also kept available (the GPU is still the default
+    # device), since calc_flops needs it
+    os.environ["JAX_PLATFORMS"] = device if device == "cpu" else f"{device},cpu"
     if device == "cpu":
         # The number of CPUs that the XLA CPU client uses, which sizes its thread pool
         # (the equivalent of torch.set_num_threads). With 1, a SCRAPL path used 1.00
@@ -300,6 +310,10 @@ def setup_jax_env(device: str, num_threads: int) -> None:
         os.environ["PJRT_NPROC"] = str(num_threads)
     # Otherwise JAX preallocates 75% of the GPU memory on startup
     os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+    if compilation_cache_dir is not None:
+        cache_dir = os.path.abspath(os.path.expanduser(compilation_cache_dir))
+        os.environ["JAX_COMPILATION_CACHE_DIR"] = cache_dir
+        log.info(f"Using the JAX compilation cache in {cache_dir}")
 
 
 def make_loss_grad_fn(
@@ -325,11 +339,27 @@ def calc_flops(fn: Callable[..., Any], args: Tuple[Any, ...]) -> float:
     FLOPs of `fn` estimated by XLA's HloCostAnalysis before XLA's optimizations (e.g.
     fusion), so they do not depend on the device. Transcendental ops such as sqrt and
     log are counted separately by XLA, so they are not included. XLA counts the body
-    of a loop (e.g. lax.scan, lax.map, or lax.while_loop) only once.
+    of a loop (e.g. lax.scan, lax.map, or lax.while_loop) only once. `fn` is always
+    lowered for the CPU, from the shapes and dtypes of `args` only, since JAX only
+    supports this cost analysis on its built-in backends, such as the CPU (for CUDA
+    it returns None). Returns NaN if the CPU backend is unavailable.
     """
     import jax
 
-    return jax.jit(fn).lower(*args).cost_analysis().get("flops", 0.0)  # 0 is omitted
+    try:
+        cpu = jax.devices("cpu")[0]
+    except RuntimeError:
+        log.warning("The JAX CPU backend is unavailable, so FLOPs are not calculated")
+        return float("nan")
+    sharding = jax.sharding.SingleDeviceSharding(cpu)
+    cpu_args = jax.tree.map(
+        lambda a: jax.ShapeDtypeStruct(a.shape, a.dtype, sharding=sharding), args
+    )
+    cost = jax.jit(fn).lower(*cpu_args).cost_analysis()
+    if cost is None:
+        log.warning("XLA's cost analysis is unavailable, so FLOPs are not calculated")
+        return float("nan")
+    return cost.get("flops", 0.0)  # 0 is omitted
 
 
 def compile_fn(
@@ -394,7 +424,8 @@ def blocked_autorange(
             break
         number *= 10
     raw_times = []
-    while sum(raw_times) < min_run_time:
+    # At least one block is timed, even if min_run_time is 0, the same as PyTorch
+    while not raw_times or sum(raw_times) < min_run_time:
         raw_times.append(time_n_calls(fn, args, number))
     times = [t / number for t in raw_times]
     return times, number

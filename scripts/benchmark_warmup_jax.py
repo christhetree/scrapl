@@ -24,8 +24,11 @@ device = "cpu"
 # device = "cuda"
 n_theta = 1
 n_iter = 20
+compilation_cache_dir = None
+# compilation_cache_dir = os.path.join(util.ROOT_DIR, "jax_cache")
 
-util.setup_jax_env(device, num_threads)  # Before JAX is imported
+# Before JAX is imported
+util.setup_jax_env(device, num_threads, compilation_cache_dir)
 
 import logging
 from functools import partial

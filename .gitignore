@@ -569,3 +569,6 @@ checkpoints/
 ckpt/
 data/
 .claude/
+
+# JAX compilation cache of the benchmark scripts (see scripts/util.py setup_jax_env)
+jax_cache/
