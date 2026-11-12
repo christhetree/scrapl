@@ -35,6 +35,8 @@ OUT_DIR = os.path.join(ROOT_DIR, "out")
 # the compilation wall-clock and CPU times (see compile_fn), except for the warmup
 # benchmark, which omits the FLOPs.
 TORCH_COLS = ["name", "median_time", "iqr", "n_runs", "max_mem_MB"]
+# With torch.compile, the PyTorch benchmarks also report the compilation time
+TORCH_COMPILE_COLS = TORCH_COLS + ["compile_time"]
 JAX_COLS = TORCH_COLS + ["flops", "compile_time", "compile_cpu_time"]
 JAX_WARMUP_COLS = TORCH_COLS + ["compile_time", "compile_cpu_time"]
 
@@ -228,12 +230,32 @@ def benchmark_torch(
     num_threads: int = 1,
     min_run_time: float = 1.0,
     stmt: str = "fn(x_hat, x, loss_func, path_idx)",
+    time_first_call: bool = False,
 ) -> Tuple[Any, ...]:
     """
     A row of TORCH_COLS for running `stmt` with `globals`: its median runtime, the
-    IQR of the runtime, the number of runs, and peak memory (MB).
+    IQR of the runtime, the number of runs, and peak memory (MB). With
+    `time_first_call` (for torch.compile), a row of TORCH_COMPILE_COLS, which also
+    has the time of the first call (compilation plus one run), since torch.compile
+    compiles lazily. It is run with num_threads, since the compiled CPU kernels may
+    use the number of threads at compilation time.
     """
+    import torch as tr
     from torch.utils import benchmark
+
+    first_call_time = None
+    if time_first_call:
+        prev_num_threads = tr.get_num_threads()
+        tr.set_num_threads(num_threads)
+        try:
+            start = time.perf_counter()
+            eval(stmt, dict(globals))
+            if device.startswith("cuda"):
+                tr.cuda.synchronize(device)
+            first_call_time = time.perf_counter() - start
+        finally:
+            tr.set_num_threads(prev_num_threads)
+        log.info(f"First call (compilation) took {first_call_time:.2f} s")
 
     result = benchmark.Timer(
         stmt=stmt,
@@ -249,7 +271,8 @@ def benchmark_torch(
         max_mem = calc_cpu_peak_mem_mb(stmt, globals, num_threads)
     # result.times has one entry per measurement block of number_per_run calls
     n_runs = len(result.raw_times) * result.number_per_run
-    return name, result.median, result.iqr, n_runs, max_mem
+    row = (name, result.median, result.iqr, n_runs, max_mem)
+    return row if first_call_time is None else row + (first_call_time,)
 
 
 def benchmark_scrapl_paths_torch(
@@ -259,8 +282,12 @@ def benchmark_scrapl_paths_torch(
     device: str,
     num_threads: int = 1,
     min_run_time: float = 1.0,
+    time_first_call: bool = False,
 ) -> pd.DataFrame:
-    """Benchmarks a forward and backward pass of every path of `scrapl_loss`."""
+    """
+    Benchmarks a forward and backward pass of every path of `scrapl_loss` (see
+    benchmark_torch).
+    """
     globals = {
         "x": x,
         "x_hat": x_hat,
@@ -277,9 +304,12 @@ def benchmark_scrapl_paths_torch(
             device,
             num_threads=num_threads,
             min_run_time=min_run_time,
+            time_first_call=time_first_call,
         )
         rows.append(row)
-    return pd.DataFrame(rows, columns=TORCH_COLS)
+    return pd.DataFrame(
+        rows, columns=TORCH_COMPILE_COLS if time_first_call else TORCH_COLS
+    )
 
 
 # JAX ============================================================================
