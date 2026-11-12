@@ -678,6 +678,7 @@ class SCRAPLLoss(nn.Module):
         param_grad: T,
         params: list[Parameter],
         n_iter: int = 20,
+        power_iter_err_threshold: float = 1e-4,
     ) -> tuple[T, T]:
         apply_fn = functools.partial(
             self._calc_param_hvp,
@@ -692,6 +693,7 @@ class SCRAPLLoss(nn.Module):
             operator=hvp_op,
             num_eigenthings=1,
             power_iter_steps=n_iter,
+            power_iter_err_threshold=power_iter_err_threshold,
             to_numpy=False,
             use_gpu=use_gpu,
             return_rel_residuals=True,
@@ -710,6 +712,7 @@ class SCRAPLLoss(nn.Module):
         seed: int | None = None,
         synth_fn_kwargs: dict[str, Any] | None = None,
         n_iter: int = 20,
+        power_iter_err_threshold: float = 1e-4,
     ) -> tuple[T, T]:
         theta_param_grad = self._calc_batch_theta_param_grad(
             path_idx,
@@ -725,7 +728,10 @@ class SCRAPLLoss(nn.Module):
         for theta_idx in range(self.n_theta):
             param_grad = theta_param_grad[theta_idx, :]
             eig1, rel_residual1 = self._calc_largest_eig(
-                param_grad, params, n_iter=n_iter
+                param_grad,
+                params,
+                n_iter=n_iter,
+                power_iter_err_threshold=power_iter_err_threshold,
             )
             theta_eigs.append(eig1)
             theta_rel_residuals.append(rel_residual1)
@@ -785,6 +791,7 @@ class SCRAPLLoss(nn.Module):
         params: list[Parameter],
         synth_fn_kwargs: list[dict[str, Any]] | None = None,
         n_iter: int = 20,
+        power_iter_err_threshold: float = 1e-4,
     ) -> tuple[T, T]:
         apply_fn = functools.partial(
             self._calc_param_hvp_multibatch,
@@ -803,6 +810,7 @@ class SCRAPLLoss(nn.Module):
             operator=hvp_op,
             num_eigenthings=1,
             power_iter_steps=n_iter,
+            power_iter_err_threshold=power_iter_err_threshold,
             to_numpy=False,
             use_gpu=use_gpu,
             return_rel_residuals=True,
@@ -820,6 +828,7 @@ class SCRAPLLoss(nn.Module):
         params: list[Parameter],
         synth_fn_kwargs: list[dict[str, Any]] | None = None,
         n_iter: int = 20,
+        power_iter_err_threshold: float = 1e-4,
     ) -> tuple[T, T]:
         theta_eigs = []
         theta_rel_residuals = []
@@ -833,6 +842,7 @@ class SCRAPLLoss(nn.Module):
                 params,
                 synth_fn_kwargs=synth_fn_kwargs,
                 n_iter=n_iter,
+                power_iter_err_threshold=power_iter_err_threshold,
             )
             theta_eigs.append(eig1)
             theta_rel_residuals.append(rel_residual1)
@@ -875,6 +885,7 @@ class SCRAPLLoss(nn.Module):
         end_path_idx: int | None = None,
         save_dir: str | None = "scrapl_warmup",
         n_iter: int = 20,
+        power_iter_err_threshold: float = 1e-4,
         agg: Literal["none", "mean", "max", "med"] = "none",
         force_multibatch: bool = False,
     ) -> None:
@@ -931,6 +942,10 @@ class SCRAPLLoss(nn.Module):
                 approximate the largest eigenvalue of the Hessian. Higher values
                 increase precision at the cost of computation time.
                 Defaults to 20.
+            power_iter_err_threshold (float, optional): Stops each power iteration
+                early once the relative change of its eigenvalue estimate between two
+                steps drops below this threshold. 0.0 always runs `n_iter` steps.
+                Defaults to 1e-4.
             agg (Literal["none", "mean", "max", "med"], optional): The aggregation
                 strategy if `params` are split into individual tensors. Usually kept as
                 "none" to aggregate across the full parameter set provided unless it
@@ -985,7 +1000,8 @@ class SCRAPLLoss(nn.Module):
         is_multibatch = force_multibatch or len(theta_fn_kwargs) > 1
         log.info(
             f"Starting warmup_lc_hvp with agg = {agg} for {len(params)} "
-            f"parameter(s) and {len(theta_fn_kwargs)} batch(es), {n_iter} iter "
+            f"parameter(s) and {len(theta_fn_kwargs)} batch(es), {n_iter} iter, "
+            f"power_iter_err_threshold = {power_iter_err_threshold} "
             f"(multibatch = {is_multibatch})"
         )
         if is_multibatch:
@@ -1013,6 +1029,7 @@ class SCRAPLLoss(nn.Module):
                     params=param_group,
                     synth_fn_kwargs=synth_fn_kwargs,
                     n_iter=n_iter,
+                    power_iter_err_threshold=power_iter_err_threshold,
                 )
                 # TODO: double check this
                 curr_vals = curr_vals.abs()

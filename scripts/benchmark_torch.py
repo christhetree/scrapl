@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 batch_size = 4
-n_samples = 32768
+n_samples = 44100
 num_threads = 1
 # min_run_time = 15.0
 min_run_time = 5.0
@@ -36,16 +36,21 @@ def main() -> None:
         f"min_run_time={min_run_time}, batch_size={batch_size}, "
         f"n_samples={n_samples}, run_scrapl={run_scrapl}"
     )
-    tr.manual_seed(42)
+
+    for config_name in ["scat_1d", "jtfs", "scrapl"]:
+        shape = util.load_config(config_name)["init_args"]["shape"]
+        assert shape == n_samples, f"{config_name} config shape {shape} != {n_samples}"
 
     mss_log_loss = util.load_class_from_yaml("mss_meso_log")
     mss_rev_loss = util.load_class_from_yaml("mss_revisited")
     scat_1d_loss = util.load_class_from_yaml("scat_1d")
     jtfs_loss = util.load_class_from_yaml("jtfs")
 
-    # Create directly on device so x_hat is a leaf (no GPU -> CPU grad copy)
-    x = tr.rand((batch_size, 1, n_samples), device=device)
-    x_hat = tr.rand((batch_size, 1, n_samples), device=device, requires_grad=True)
+    # The same inputs as benchmark_jax.py. requires_grad is set after moving x_hat to
+    # the device so that it is a leaf (no GPU -> CPU grad copy).
+    xs, x_hat = util.make_inputs(batch_size, n_samples)
+    x = tr.from_numpy(xs[0]).to(device)
+    x_hat = tr.from_numpy(x_hat).to(device).requires_grad_()
 
     df_rows = []
     globals = {

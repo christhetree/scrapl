@@ -3,25 +3,26 @@ Benchmarks the runtime, peak memory, and compilation time of the SCRAPL θ-IS wa
 (scrapl.jax.warmup_lc_hvp) per path in JAX. The JAX equivalent of
 benchmark_warmup_torch.py, using the same loss config and minimal encoder and decoder
 (see util.make_theta_is_arrays), so that the cost is almost entirely the SCRAPL
-loss's. The total cost is also logged in mean SCRAPL training steps (see
-util.log_warmup_cost), which are benchmarked as well.
+loss's.
 
 Run from the repository root with: uv run python scripts/benchmark_warmup_jax.py
 """
 
 import os
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 import util
 
+n_batches = 1
 batch_size = 4
-n_samples = 32768
+n_samples = 44100
 num_threads = 1
 # min_run_time = 15.0
 min_run_time = 5.0
 device = "cpu"
 # device = "cuda"
-# Power iteration steps per theta and path. All of them are always run (no early
-# stopping), so that both warmup benchmarks do the same amount of work.
+n_theta = 1
 n_iter = 20
 
 util.setup_jax_env(device, num_threads)  # Before JAX is imported
@@ -43,12 +44,26 @@ log = logging.getLogger(__name__)
 log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 
-def enc_fn(
+def encoder(
     enc_params: Dict[str, Float[Array, "..."]], x: Float[Array, "bs n_ch n_samples"]
 ) -> Float[Array, "bs n_theta"]:
-    """The minimal encoder (see util.make_theta_is_arrays)."""
-    pooled = x.reshape(x.shape[0], util.THETA_IS_N_POOL, -1).mean(axis=-1)
-    return pooled @ enc_params["w"] + enc_params["b"]
+    """
+    The minimal encoder (enc_fn) used to benchmark the θ-IS warmup: the waveform x
+    multiplied by the random weight matrix enc_params["w"] of shape
+    (n_samples, n_theta), the only weights (see util.make_theta_is_arrays).
+    """
+    return x.reshape(x.shape[0], -1) @ enc_params["w"]
+
+
+def decoder(
+    theta: Float[Array, "bs n_theta"], basis: Float[Array, "n_theta n_samples"]
+) -> Float[Array, "bs 1 n_samples"]:
+    """
+    The minimal decoder (dec_fn) used to benchmark the θ-IS warmup: a fixed linear
+    synth without weights that mixes the n_theta sinusoids in `basis` with theta as
+    their amplitudes (see util.make_theta_is_arrays).
+    """
+    return (theta @ basis)[:, None, :]
 
 
 def make_path_fn(
@@ -70,7 +85,7 @@ def make_path_fn(
     return partial(
         calc_path_eigs,
         loss=loss,
-        enc_fn=enc_fn,
+        enc_fn=encoder,
         dec_fn=dec_fn,
         path_idx=path_idx,
         n_theta=n_theta,
@@ -84,38 +99,25 @@ def make_path_fn(
 def main() -> None:
     log.info(
         f"Benchmarking with device={device}, num_threads={num_threads}, "
-        f"min_run_time={min_run_time}, batch_size={batch_size}, "
-        f"n_samples={n_samples}, n_iter={n_iter}"
+        f"min_run_time={min_run_time}, n_batches={n_batches}, batch_size={batch_size}, "
+        f"n_samples={n_samples}, n_theta={n_theta}, n_iter={n_iter}"
     )
     log.info(f"JAX devices: {jax.devices()}")
 
+    shape = util.load_config("scrapl")["init_args"]["shape"]
+    assert shape == n_samples, f"scrapl config shape {shape} != {n_samples}"
     scrapl_loss = util.load_class_from_yaml("scrapl", SCRAPLLoss)
     n_paths = scrapl_loss.n_paths
-    # n_theta is not an init arg of the JAX SCRAPLLoss (warmup_lc_hvp infers it from
-    # the encoder output), so it is read from the config directly
-    n_theta = util.load_config("scrapl")["init_args"]["n_theta"]
 
-    # Created on the default device, which is set by JAX_PLATFORMS
-    key_x, key_x_hat = jax.random.split(jax.random.key(42))
-    x = jax.random.uniform(key_x, (batch_size, 1, n_samples))
-    x_hat = jax.random.uniform(key_x_hat, (batch_size, 1, n_samples))
+    # The same warmup batches as benchmark_warmup_torch.py, on the default device,
+    # which is set by JAX_PLATFORMS
+    xs, _ = util.make_inputs(batch_size, n_samples, n_batches)
+    xs = jnp.asarray(xs)
 
-    # The mean runtime of a SCRAPL training step over the paths, the unit of the
-    # warmup cost (see util.log_warmup_cost)
-    scrapl_df = util.benchmark_scrapl_paths_jax(
-        scrapl_loss, x, x_hat, min_run_time=min_run_time, with_flops=False
-    )
-    step_time = scrapl_df["median_time"].mean()
+    enc_w, basis = util.make_theta_is_arrays(n_theta, n_samples)
+    enc_params = {"w": jnp.asarray(enc_w)}
+    dec_fn = partial(decoder, basis=jnp.asarray(basis))
 
-    enc_w, enc_b, basis = util.make_theta_is_arrays(n_theta, n_samples)
-    enc_params = {"w": jnp.asarray(enc_w), "b": jnp.asarray(enc_b)}
-    basis = jnp.asarray(basis)
-
-    def dec_fn(theta: Float[Array, "bs n_theta"]) -> Float[Array, "bs 1 n_samples"]:
-        """The minimal decoder (see util.make_theta_is_arrays)."""
-        return (theta @ basis)[:, None, :]
-
-    xs = x[None]  # A single batch
     key = jax.random.key(0)
     log.info(
         f"Benchmarking theta-IS with n_theta={n_theta}, n_iter={n_iter}, "
@@ -139,7 +141,6 @@ def main() -> None:
     # so its cost is scrapl_total.
     df = pd.DataFrame(util.summarize_paths(theta_is_df), columns=util.JAX_WARMUP_COLS)
     util.save_df(df, f"benchmark_warmup_jax_{device}.tsv")
-    util.log_warmup_cost(df, step_time)
 
 
 if __name__ == "__main__":

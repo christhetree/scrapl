@@ -10,10 +10,12 @@ Run from the repository root with: uv run python scripts/benchmark_jax.py
 
 import os
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 import util
 
 batch_size = 4
-n_samples = 32768
+n_samples = 44100
 num_threads = 1
 # min_run_time = 15.0
 min_run_time = 5.0
@@ -26,6 +28,7 @@ util.setup_jax_env(device, num_threads)  # Before JAX is imported
 import logging
 
 import jax
+import jax.numpy as jnp
 import pandas as pd
 
 from losses_jax import JTFSTLoss, LogMSSLoss, MultiResolutionSTFTLoss, Scat1DLoss
@@ -43,16 +46,19 @@ def main() -> None:
         f"n_samples={n_samples}, run_scrapl={run_scrapl}"
     )
     log.info(f"JAX devices: {jax.devices()}")
+    for config_name in ["scat_1d", "jtfs", "scrapl"]:
+        shape = util.load_config(config_name)["init_args"]["shape"]
+        assert shape == n_samples, f"{config_name} config shape {shape} != {n_samples}"
 
     mss_log_loss = util.load_class_from_yaml("mss_meso_log", MultiResolutionSTFTLoss)
     mss_rev_loss = util.load_class_from_yaml("mss_revisited", LogMSSLoss)
     scat_1d_loss = util.load_class_from_yaml("scat_1d", Scat1DLoss)
     jtfs_loss = util.load_class_from_yaml("jtfs", JTFSTLoss)
 
-    # Created on the default device, which is set by JAX_PLATFORMS
-    key_x, key_x_hat = jax.random.split(jax.random.key(42))
-    x = jax.random.uniform(key_x, (batch_size, 1, n_samples))
-    x_hat = jax.random.uniform(key_x_hat, (batch_size, 1, n_samples))
+    # The same inputs as benchmark_torch.py, on the default device, which is set by
+    # JAX_PLATFORMS
+    xs, x_hat = util.make_inputs(batch_size, n_samples)
+    x, x_hat = jnp.asarray(xs[0]), jnp.asarray(x_hat)
 
     df_rows = []
     loss_funcs = [

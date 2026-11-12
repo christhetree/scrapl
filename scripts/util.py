@@ -28,8 +28,6 @@ log.setLevel(level=os.environ.get("LOGLEVEL", "INFO"))
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(SCRIPTS_DIR)
-# Copies of experiments/configs/losses/*.yml, with src.losses -> losses. The JAX
-# benchmarks only use their init_args.
 CONFIGS_DIR = os.path.join(SCRIPTS_DIR, "configs")
 OUT_DIR = os.path.join(ROOT_DIR, "out")
 
@@ -40,17 +38,13 @@ JAX_COLS = TORCH_COLS + ["flops", "compile_time"]
 JAX_WARMUP_COLS = TORCH_COLS + ["compile_time"]
 
 # The summary rows of per-path results: their names and the aggregation over the paths
-# (see aggregate_paths). scrapl_mean is the expected cost when paths are sampled
+# (see summarize_paths). scrapl_mean is the expected cost when paths are sampled
 # uniformly, and scrapl_total the cost of running every path once.
 PATH_AGGS = [
     ("scrapl_median", "median"),
     ("scrapl_mean", "mean"),
     ("scrapl_total", "sum"),
 ]
-
-# The input size of the minimal θ-IS encoder: the waveform average pooled to this many
-# values (see make_theta_is_arrays)
-THETA_IS_N_POOL = 16
 
 
 # Shared =========================================================================
@@ -62,18 +56,19 @@ def load_config(config_name: str) -> Dict[str, Any]:
 
 
 def load_class_from_yaml(
-    config_name: str, cls: Optional[Callable[..., Any]] = None
+    config_name: str, cls: Optional[Callable[..., Any]] = None, **overrides: Any
 ) -> Any:
     """
     Instantiates the class_path class of the loss config
-    configs/losses/{config_name}.yml with its init_args. If `cls` is given (e.g. the
+    configs/losses/{config_name}.yml with its init_args, updated with `overrides`
+    (e.g. n_theta=2). If `cls` is given (e.g. the
     JAX equivalent of the class), it is instantiated instead, so that all benchmarks
     use identical hyperparameters, and init args that `cls` does not accept are
     dropped (e.g. the SCRAPL optimizer args, which are part of scrapl_optimizer in JAX
     and are not used by the benchmarks).
     """
     config = load_config(config_name)
-    init_args = config["init_args"]
+    init_args = {**config["init_args"], **overrides}
     if cls is None:
         module_name, class_name = config["class_path"].rsplit(".", 1)
         cls = getattr(importlib.import_module(module_name), class_name)
@@ -92,71 +87,70 @@ def save_df(df: pd.DataFrame, file_name: str) -> None:
     df.to_csv(os.path.join(OUT_DIR, file_name), index=False, sep="\t")
 
 
-def aggregate_paths(df: pd.DataFrame, name: str, agg: str) -> Tuple[Any, ...]:
-    """
-    A row aggregating the per-path rows of `df` with `agg` ("median", "mean", or
-    "sum"), except for peak memory, which is the max over the paths. For "sum", the
-    IQR is the sum of the IQRs, which is the IQR of the total runtime only if the
-    runtimes of the paths are perfectly correlated (otherwise it usually overestimates
-    it).
-    """
-    row = [name]
-    for col in df.columns[1:]:
-        row.append(df[col].max() if col == "max_mem_MB" else df[col].agg(agg))
-    return tuple(row)
-
-
 def summarize_paths(df: pd.DataFrame) -> List[Tuple[Any, ...]]:
-    """The summary rows of the per-path rows of `df` (see PATH_AGGS)."""
-    return [aggregate_paths(df, name, agg) for name, agg in PATH_AGGS]
+    """
+    The summary rows of the per-path rows of `df`: one row per (name, agg) in
+    PATH_AGGS, which aggregates every column over the paths with `agg` ("median",
+    "mean", or "sum"), except for peak memory, which is the max over the paths. For
+    "sum", the IQR is the sum of the IQRs, which is the IQR of the total runtime only
+    if the runtimes of the paths are perfectly correlated (otherwise it usually
+    overestimates it).
+    """
+    rows = []
+    for name, agg in PATH_AGGS:
+        row = [name]
+        for col in df.columns[1:]:
+            row.append(df[col].max() if col == "max_mem_MB" else df[col].agg(agg))
+        rows.append(tuple(row))
+    return rows
 
 
-def make_theta_is_arrays(
-    n_theta: int, n_samples: int
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def make_inputs(
+    batch_size: int, n_samples: int, n_batches: int = 1
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Random inputs, uniform on [0, 1), shared by the PyTorch and JAX benchmarks so that
+    both compute on identical data: the target batches xs of shape
+    (n_batches, batch_size, 1, n_samples), the first of which is the target x of the
+    training step benchmarks, and the prediction x_hat of shape
+    (batch_size, 1, n_samples). x_hat and xs[0] do not depend on n_batches.
+    """
+    rng = np.random.default_rng(42)
+    x_hat = rng.random((batch_size, 1, n_samples), dtype=np.float32)
+    xs = rng.random((n_batches, batch_size, 1, n_samples), dtype=np.float32)
+    return xs, x_hat
+
+
+def make_theta_is_arrays(n_theta: int, n_samples: int) -> Tuple[np.ndarray, np.ndarray]:
     """
     Weights of the minimal encoder and decoder (synth) used to benchmark the θ-IS
-    warmup, so that its cost is almost entirely the SCRAPL loss's, regardless of the
-    encoder and decoder used in practice. The encoder is a linear layer (enc_w and
-    enc_b) applied to the waveform average pooled to THETA_IS_N_POOL values, and the
-    decoder is a fixed linear synth without weights that mixes n_theta sinusoids
-    (basis) with theta as their amplitudes.
+    warmup (see encoder and decoder in benchmark_warmup_torch.py and
+    benchmark_warmup_jax.py), so that its cost is almost entirely the SCRAPL loss's,
+    regardless of the encoder and decoder used in practice. The encoder is a random
+    weight matrix (enc_w) that the waveform is multiplied by, scaled so that theta is
+    O(1), and the decoder is a fixed linear synth without weights that mixes n_theta
+    sinusoids (basis) with theta as their amplitudes.
     """
     rng = np.random.default_rng(0)
-    enc_w = rng.standard_normal((THETA_IS_N_POOL, n_theta)) / np.sqrt(THETA_IS_N_POOL)
-    enc_b = np.zeros(n_theta)
+    enc_w = rng.standard_normal((n_samples, n_theta)) / np.sqrt(n_samples)
     freqs = 0.01 * np.arange(1, n_theta + 1)  # Cycles per sample
     basis = np.sin(2 * np.pi * freqs[:, None] * np.arange(n_samples))
-    return enc_w.astype(np.float32), enc_b.astype(np.float32), basis.astype(np.float32)
-
-
-def log_warmup_cost(df: pd.DataFrame, step_time: float) -> None:
-    """
-    Logs the cost of the θ-IS warmup (the scrapl_total row of its summary `df`) in
-    units of the mean runtime of a SCRAPL training step over the paths (`step_time`),
-    which carries over approximately to other encoders and decoders, since a
-    curvature-vector product costs a roughly constant multiple of a gradient.
-    """
-    total = df.set_index("name").loc["scrapl_total"]
-    msg = (
-        f"theta-IS warmup = {total['median_time'] / step_time:.1f} mean SCRAPL "
-        f"training steps ({step_time:.4f} s each)"
-    )
-    if "compile_time" in df.columns:
-        # Each path is compiled and run once during the warmup, so unlike for
-        # training steps, the compilation time is not amortized
-        total_time = total["median_time"] + total["compile_time"]
-        msg += f", {total_time:.1f} s in total including compilation"
-    log.info(msg)
+    return enc_w.astype(np.float32), basis.astype(np.float32)
 
 
 # PyTorch ========================================================================
 def benchmark_loss_func(
-    x: "T",
     x_hat: "T",
+    x: "T",
     loss_func: Callable[..., "T"],
     path_idx: Optional[int] = None,
 ) -> None:
+    """
+    A forward and backward pass of `loss_func`. The gradient w.r.t. x_hat is reset
+    first, so that each call allocates a new one instead of accumulating into the
+    previous one, the same as the JAX benchmarks (see make_loss_grad_fn).
+    """
+    x_hat.grad = None
     if path_idx is None:
         loss = loss_func(x_hat, x)
     else:
@@ -220,7 +214,7 @@ def benchmark_torch(
     device: str,
     num_threads: int = 1,
     min_run_time: float = 1.0,
-    stmt: str = "fn(x, x_hat, loss_func, path_idx)",
+    stmt: str = "fn(x_hat, x, loss_func, path_idx)",
 ) -> Tuple[Any, ...]:
     """
     A row of TORCH_COLS for running `stmt` with `globals`: its median runtime, the
@@ -283,10 +277,13 @@ def setup_jax_env(device: str, num_threads: int) -> None:
             "JAX was imported before setup_jax_env, so the device and number of "
             "threads may not be applied"
         )
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     os.environ["JAX_PLATFORMS"] = device
     if device == "cpu":
-        # Size of the XLA CPU thread pool (the equivalent of torch.set_num_threads)
+        # The number of CPUs that the XLA CPU client uses, which sizes its thread pool
+        # (the equivalent of torch.set_num_threads). With 1, a SCRAPL path used 1.00
+        # CPU seconds per wall-clock second (4.45 without it). XLA_FLAGS cannot do this:
+        # --xla_cpu_multi_thread_eigen=false only affects Eigen ops (1.83), and
+        # intra_op_parallelism_threads is not an XLA flag.
         os.environ["PJRT_NPROC"] = str(num_threads)
     # Otherwise JAX preallocates 75% of the GPU memory on startup
     os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
@@ -435,7 +432,6 @@ def benchmark_scrapl_paths_jax(
     x: Any,
     x_hat: Any,
     min_run_time: float = 1.0,
-    with_flops: bool = True,
 ) -> pd.DataFrame:
     """
     Benchmarks a forward and backward pass of every path of `scrapl_loss` (see
@@ -445,8 +441,7 @@ def benchmark_scrapl_paths_jax(
     for path_idx in range(scrapl_loss.n_paths):
         log.info(f"Benchmarking scrapl path {path_idx} / {scrapl_loss.n_paths}...")
         fn = make_loss_grad_fn(scrapl_loss, path_idx)
-        row = benchmark_jax(
-            f"scrapl_path_{path_idx}", fn, (x_hat, x), min_run_time, with_flops
+        rows.append(
+            benchmark_jax(f"scrapl_path_{path_idx}", fn, (x_hat, x), min_run_time)
         )
-        rows.append(row)
-    return pd.DataFrame(rows, columns=JAX_COLS if with_flops else JAX_WARMUP_COLS)
+    return pd.DataFrame(rows, columns=JAX_COLS)

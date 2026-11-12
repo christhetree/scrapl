@@ -1,6 +1,6 @@
 class_path: losses.JTFSTLoss
 init_args:
-  shape: 32768
+  shape: 44100
 #  J: 12
   J: 2
 #  Q1: 8
