@@ -32,10 +32,11 @@ CONFIGS_DIR = os.path.join(SCRIPTS_DIR, "configs")
 OUT_DIR = os.path.join(ROOT_DIR, "out")
 
 # The columns of the benchmark results. The JAX benchmarks also report the FLOPs and
-# the compilation time, except for the warmup benchmark, which omits the FLOPs.
+# the compilation wall-clock and CPU times (see compile_fn), except for the warmup
+# benchmark, which omits the FLOPs.
 TORCH_COLS = ["name", "median_time", "iqr", "n_runs", "max_mem_MB"]
-JAX_COLS = TORCH_COLS + ["flops", "compile_time"]
-JAX_WARMUP_COLS = TORCH_COLS + ["compile_time"]
+JAX_COLS = TORCH_COLS + ["flops", "compile_time", "compile_cpu_time"]
+JAX_WARMUP_COLS = TORCH_COLS + ["compile_time", "compile_cpu_time"]
 
 # The summary rows of per-path results: their names and the aggregation over the paths
 # (see summarize_paths). scrapl_mean is the expected cost when paths are sampled
@@ -80,9 +81,21 @@ def load_class_from_yaml(
     return cls(**{k: v for k, v in init_args.items() if k in params})
 
 
+def format_sci(val: float) -> str:
+    """Formats `val` in scientific notation with 3 significant digits, e.g. 3.24e6."""
+    if not np.isfinite(val):
+        return str(val)
+    mantissa, exponent = f"{val:.2e}".split("e")
+    return f"{mantissa}e{int(exponent)}"
+
+
 def save_df(df: pd.DataFrame, file_name: str) -> None:
-    """Prints `df` and saves it as a TSV file in OUT_DIR."""
-    print(df.to_string(index=False))
+    """
+    Prints `df`, with the FLOPs in scientific notation (see format_sci), and saves it
+    as a TSV file in OUT_DIR with full precision.
+    """
+    formatters = {"flops": format_sci} if "flops" in df.columns else None
+    print(df.to_string(index=False, formatters=formatters))
     os.makedirs(OUT_DIR, exist_ok=True)
     df.to_csv(os.path.join(OUT_DIR, file_name), index=False, sep="\t")
 
@@ -321,17 +334,21 @@ def calc_flops(fn: Callable[..., Any], args: Tuple[Any, ...]) -> float:
 
 def compile_fn(
     fn: Callable[..., Any], args: Tuple[Any, ...]
-) -> Tuple["Compiled", float]:
+) -> Tuple["Compiled", float, float]:
     """
-    Ahead-of-time JIT compiles `fn` for `args`. Returns the compiled function and the
-    compilation time.
+    Ahead-of-time JIT compiles `fn` for `args`. Returns the compiled function, the
+    compilation time (wall-clock), and the compilation CPU time (user + system time
+    summed over all threads of the process). Unlike running the compiled function,
+    compiling is not limited to num_threads (PJRT_NPROC), so the CPU time is roughly
+    what compiling would take on a single core.
     """
     import jax
 
-    start = time.perf_counter()
+    start, cpu_start = time.perf_counter(), time.process_time()
     compiled = jax.jit(fn).lower(*args).compile()
     compile_time = time.perf_counter() - start
-    return compiled, compile_time
+    compile_cpu_time = time.process_time() - cpu_start
+    return compiled, compile_time, compile_cpu_time
 
 
 def time_n_calls(fn: Callable[..., Any], args: Tuple[Any, ...], number: int) -> float:
@@ -412,10 +429,11 @@ def benchmark_jax(
     """
     A row of JAX_COLS (JAX_WARMUP_COLS without `with_flops`) for `fn` with `args`:
     after compiling `fn`, its median runtime, the IQR of the runtime, the number of
-    runs, peak memory (MB), FLOPs (see calc_flops), and the compilation time.
+    runs, peak memory (MB), FLOPs (see calc_flops), and the compilation wall-clock
+    and CPU times (see compile_fn).
     """
-    compiled, compile_time = compile_fn(fn, args)
-    log.info(f"Compiled in {compile_time:.2f} s")
+    compiled, compile_time, compile_cpu_time = compile_fn(fn, args)
+    log.info(f"Compiled in {compile_time:.2f} s ({compile_cpu_time:.2f} s CPU time)")
     times, number = blocked_autorange(compiled, args, min_run_time)
     # Linear interpolation, the same as torch.quantile in torch.utils.benchmark
     q1, median, q3 = np.quantile(times, [0.25, 0.5, 0.75])
@@ -424,7 +442,7 @@ def benchmark_jax(
     row = [name, float(median), float(q3 - q1), n_runs, max_mem]
     if with_flops:
         row.append(calc_flops(fn, args))
-    return tuple(row + [compile_time])
+    return tuple(row + [compile_time, compile_cpu_time])
 
 
 def benchmark_scrapl_paths_jax(
