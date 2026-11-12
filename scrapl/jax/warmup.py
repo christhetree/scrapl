@@ -501,6 +501,91 @@ def calc_largest_eig_power_iter(
     return eig, errors
 
 
+def calc_path_eigs(
+    enc_params: PyTree[Float[Array, "..."]],
+    xs: Float[Array, "n_batches bs n_ch n_samples"],
+    enc_kwargs: dict[str, Any],
+    dec_kwargs: dict[str, Any],
+    key: Key[Array, ""],
+    *,
+    loss: SCRAPLLoss,
+    enc_fn: Callable[..., Float[Array, "bs n_theta"]],
+    dec_fn: Callable[..., Float[Array, "bs n_ch n_samples"]],
+    path_idx: int,
+    n_theta: int,
+    n_iter: int,
+    tol: float,
+    eps: float,
+    vmap_theta: bool,
+) -> tuple[Float[Array, "n_theta"], Float[Array, "n_theta"]]:
+    """Estimates the θ-IS curvature of every theta for a single path.
+
+    The per-path computation of `warmup_lc_hvp`, which JIT compiles it for each path
+    with the keyword-only arguments bound and `path_idx` static. Exposed so that it
+    can also be compiled and inspected on its own, e.g. for benchmarking.
+
+    Args:
+        enc_params (PyTree[Float[Array, "..."]]): Floating encoder weights.
+        xs (Float[Array, "n_batches bs n_ch n_samples"]): Waveform batches of shape
+            `(n_batches, batch, channels, samples)`.
+        enc_kwargs (dict[str, Any]): Per-batch keyword arguments for `enc_fn` whose
+            array leaves have a leading `n_batches` axis.
+        dec_kwargs (dict[str, Any]): Per-batch keyword arguments for `dec_fn` whose
+            array leaves have a leading `n_batches` axis.
+        key (Key[Array, ""]): JAX PRNG key of this path, from which the initial power
+            iteration vector of each theta is derived.
+        loss (SCRAPLLoss): SCRAPL loss module.
+        enc_fn (Callable[..., Float[Array, "bs n_theta"]]): Deterministic encoder
+            `enc_fn(enc_params, x, **enc_kwargs)`.
+        dec_fn (Callable[..., Float[Array, "bs n_ch n_samples"]]): Deterministic
+            decoder `dec_fn(theta, **dec_kwargs)`.
+        path_idx (int): Path index in `[0, loss.n_paths)`.
+        n_theta (int): Number of theta output by the encoder.
+        n_iter (int): Maximum number of power iteration steps per theta.
+        tol (float): Stops each power iteration early once its relative residual
+            drops below `tol`. 0.0 always runs `n_iter` steps.
+        eps (float): A small value for numerical stability in power iteration.
+        vmap_theta (bool): If True, evaluates theta indices in parallel, which is
+            faster but multiplies peak memory by `n_theta`. Otherwise evaluates them
+            sequentially.
+
+    Returns:
+        tuple[Float[Array, "n_theta"], Float[Array, "n_theta"]]: (curvatures,
+        relative_residuals) of shape `(n_theta,)`, the curvature estimate of each
+        theta and the relative residual of its final power iteration step.
+    """
+    audio_loss_fn = partial(loss, path_idx=path_idx)
+    theta_loss_fn = partial(calc_loss, dec_fn=dec_fn, loss_fn=audio_loss_fn)
+
+    def calc_theta_eig(
+        theta_idx: Int[Array, ""],
+    ) -> tuple[Float[Array, ""], Float[Array, ""]]:
+        key_theta = jax.random.fold_in(key, theta_idx)
+        tangent = generate_random_tangent(key_theta, enc_params)
+        hvp_fn = partial(
+            calc_hvp_at_theta_multibatch,
+            enc_params=enc_params,
+            theta_idx=theta_idx,
+            xs=xs,
+            enc_fn=enc_fn,
+            theta_loss_fn=theta_loss_fn,
+            enc_kwargs=enc_kwargs,
+            dec_kwargs=dec_kwargs,
+        )
+        eig, errors = calc_largest_eig_power_iter(
+            hvp_fn, tangent, n_iter=n_iter, eps=eps, tol=tol
+        )
+        final_error = errors[-1]
+        return eig, final_error
+
+    theta_indices = jnp.arange(n_theta)
+    if vmap_theta:
+        path_eigs, path_errors = jax.vmap(calc_theta_eig)(theta_indices)
+    else:
+        path_eigs, path_errors = jax.lax.map(calc_theta_eig, theta_indices)
+    return path_eigs, path_errors
+
+
 def warmup_lc_hvp(
     loss: SCRAPLLoss,
     enc_fn: Callable[..., Float[Array, "bs n_theta"]],
@@ -711,47 +796,20 @@ def warmup_lc_hvp(
         f"{xs.shape[0]} batch(es), {n_iter} iter, tol = {tol} (vmap_theta = {vmap_theta})"
     )
 
-    def calc_path_eigs(
-        enc_params: PyTree[Float[Array, "..."]],
-        xs: Float[Array, "n_batches bs n_ch n_samples"],
-        enc_kwargs: dict[str, Any],
-        dec_kwargs: dict[str, Any],
-        key: Key[Array, ""],
-        *,
-        path_idx: int,
-    ) -> tuple[Float[Array, "n_theta"], Float[Array, "n_theta"]]:
-        audio_loss_fn = partial(loss, path_idx=path_idx)
-        theta_loss_fn = partial(calc_loss, dec_fn=dec_fn, loss_fn=audio_loss_fn)
-
-        def calc_theta_eig(
-            theta_idx: Int[Array, ""],
-        ) -> tuple[Float[Array, ""], Float[Array, ""]]:
-            key_theta = jax.random.fold_in(key, theta_idx)
-            tangent = generate_random_tangent(key_theta, enc_params)
-            hvp_fn = partial(
-                calc_hvp_at_theta_multibatch,
-                enc_params=enc_params,
-                theta_idx=theta_idx,
-                xs=xs,
-                enc_fn=enc_fn,
-                theta_loss_fn=theta_loss_fn,
-                enc_kwargs=enc_kwargs,
-                dec_kwargs=dec_kwargs,
-            )
-            eig, errors = calc_largest_eig_power_iter(
-                hvp_fn, tangent, n_iter=n_iter, eps=eps, tol=tol
-            )
-            final_error = errors[-1]
-            return eig, final_error
-
-        theta_indices = jnp.arange(n_theta)
-        if vmap_theta:
-            path_eigs, path_errors = jax.vmap(calc_theta_eig)(theta_indices)
-        else:
-            path_eigs, path_errors = jax.lax.map(calc_theta_eig, theta_indices)
-        return path_eigs, path_errors
-
-    compiled = jax.jit(calc_path_eigs, static_argnames=("path_idx",))
+    compiled = jax.jit(
+        partial(
+            calc_path_eigs,
+            loss=loss,
+            enc_fn=enc_fn,
+            dec_fn=dec_fn,
+            n_theta=n_theta,
+            n_iter=n_iter,
+            tol=tol,
+            eps=eps,
+            vmap_theta=vmap_theta,
+        ),
+        static_argnames=("path_idx",),
+    )
     # Paths outside [start_path_idx, end_path_idx) stay NaN.
     curvatures = np.full((loss.n_paths, n_theta), np.nan, dtype=theta.dtype)
     relative_residuals = np.full((loss.n_paths, n_theta), np.nan, dtype=theta.dtype)
