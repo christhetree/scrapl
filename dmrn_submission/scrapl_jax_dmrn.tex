@@ -1,0 +1,179 @@
+% --------------------------------------------------------------------------
+% DMRN one-page paper: SCRAPL in JAX
+% Built from template.tex; uses dmrn2025.sty, IEEEtran.bst, scrapl_jax_dmrn.bib
+% Placeholders are marked with \tbd (rendered in red).
+% --------------------------------------------------------------------------
+
+\documentclass{article}
+\usepackage{caption}
+\usepackage{times,amsmath,amssymb,graphicx,url,dmrn2025}
+\usepackage{indentfirst}
+\usepackage{booktabs,multirow}
+\usepackage{xcolor}
+\setlength{\parskip}{0.5em}
+
+% smaller font size for captions
+\captionsetup[figure]{font=footnotesize,labelfont=footnotesize}
+\captionsetup[table]{font=footnotesize,labelfont=footnotesize}
+
+% reduce blank space after figures
+\setlength{\belowcaptionskip}{-10pt}
+
+% roman numbering of sections
+\renewcommand{\thesection}{\Roman{section}}
+
+% Placeholder for values and claims still to be filled in / verified
+\newcommand{\tbd}[1][TBD]{\textcolor{red}{#1}}
+
+% Four authors, two affiliations (same layout as \twoauthors in dmrn2025.sty)
+% #1-#4: author names, #5: affiliation 1, #6: email, #7: affiliation 2
+\makeatletter
+\def\fourauthorstwoaffils#1#2#3#4#5#6#7{\gdef\@address{}
+   \gdef\@name{{\underline{#1}\textsuperscript{1}, #2\textsuperscript{2},
+     #3\textsuperscript{1} and #4\textsuperscript{2}}\\\\
+   \normalsize{\textsuperscript{1}#5, \underline{#6}}\\\normalsize{\textsuperscript{2}#7}}}
+\makeatother
+
+% Title.
+% --------------------
+\title{SCRAPL in JAX: Efficient Scattering Transform Losses}
+
+% Single addresses (uncomment and modify for single-address case).
+% --------------------
+\oneauthor
+{Christopher Mitcheltree}
+{Neutone Inc., Tokyo, Japan}
+{christopher@neutone.jp}
+
+\begin{document}
+\tenpt
+\maketitle
+
+\begin{sloppy}
+% Pull the abstract up so its first line is flush with the Table 1 caption,
+% which \belowcaptionskip{-10pt} lifts above the column top. Tuned by measuring
+% the rendered PDF; re-tune if the caption skips or abstract spacing change.
+\vspace*{-32.9pt}
+\begin{abstract}
+``\underline{Sc}attering transform with \underline{Ra}ndom \underline{P}aths for machine \underline{L}earning'' (SCRAPL) is a stochastic optimization scheme that makes wavelet scattering transforms tractable as differentiable loss functions for perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing.
+We present a JAX implementation of SCRAPL for the joint time--frequency scattering transform (JTFS).
+On GPU, our implementation is ${\sim}10\times$ faster than PyTorch while using less memory.
+\end{abstract}
+
+%for perceptual quality assessment of deep inverse problems in computer vision, speech, and audio processing.
+
+% The DMRN example papers omit keywords, so the keywords environment is left out.
+
+% ==========================================================================
+\vspace{-8pt}
+\section{SCRAPL}
+\label{sec:scrapl}
+\vspace{-5pt}
+
+A wavelet scattering transform (ST) decomposes a signal $\boldsymbol{x}$ into $P$ coefficient vectors $\phi_p(\boldsymbol{x})$, known as \emph{paths}.
+The Euclidean distance between ST coefficients provides informative gradients for inverse problems in vision, speech, and audio, but evaluating all $P$ paths makes it an expensive training loss.
+SCRAPL~\cite{mitcheltree2026scrapl} instead samples one path per training step.
+For a reconstruction $\tilde{\boldsymbol{x}} = F_{\boldsymbol{w}}(\boldsymbol{x})$ by a model with weights $\boldsymbol{w}$, the ST loss is an expectation over paths:
+\vspace{-5pt}
+\begin{equation}
+\mathcal{L} = \sum_{p=0}^{P-1}
+  \big\Vert \phi_p(\boldsymbol{x}) - \phi_p(\tilde{\boldsymbol{x}}) \big\Vert_2^2
+  = \mathbb{E}_{p\sim\mathcal{U}_P}\big[\mathcal{L}_p\big],
+\label{eq:scrapl}
+\vspace{-5pt}
+\end{equation}
+where $\mathcal{L}_p = P\,\Vert \phi_p(\boldsymbol{x}) - \phi_p(\tilde{\boldsymbol{x}}) \Vert_2^2$ and $\mathcal{U}_P$ is uniform over paths.
+Hence, $\nabla_{\boldsymbol{w}}\mathcal{L}_p$ is an unbiased estimate of $\nabla_{\boldsymbol{w}}\mathcal{L}$ at roughly $1/P$ of the cost.
+SCRAPL reduces the variance of this estimate with $\mathcal{P}$-Adam, which keeps separate Adam moments per path; $\mathcal{P}$-SAGA, a path-wise version of SAGA~\cite{defazio2014saga}; and $\theta$-importance sampling ($\theta$-IS), which weights each path by the curvature of its loss landscape, estimated from its sensitivity to the parameters $\boldsymbol{\theta}$ of a signal model, such as a synthesizer.
+As in~\cite{mitcheltree2026scrapl}, we implement SCRAPL for the joint time--frequency scattering transform (JTFS)~\cite{anden2019joint},
+%which demodulates spectrotemporal patterns at multiple scales and rates and
+which is an informative perceptual audio loss for differentiable digital signal processing (DDSP).
+
+% ==========================================================================
+\vspace{-8pt}
+\section{JAX Implementation}
+\label{sec:jax}
+\vspace{-5pt}
+
+The \texttt{scrapl-loss} Python package\footnote{\url{https://github.com/christhetree/scrapl}} now includes a JAX backend that does not depend on PyTorch.
+%, complementing JAX audio tools such as Korvax~\cite{marttila2025korvax}.
+
+\noindent \textbf{Single-path JTFS:} Each path is computed by a single-path JTFS built on Kymatio's JAX backend~\cite{andreux2020kymatio}.
+Paths differ in their filters and output shapes, so each path is just-in-time (JIT) compiled separately with a static path index.
+
+\noindent \textbf{Stateless loss:} \texttt{SCRAPLLoss} is an immutable Equinox module: paths are sampled from a JAX PRNG key, and all training state lives in caller-managed PyTrees.
+
+\noindent \textbf{$\mathcal{P}$-Adam and $\mathcal{P}$-SAGA:} Both are Optax transformations with per-path state, chainable with standard Optax transforms like weight decay and learning-rate scaling.
+
+\noindent \textbf{$\theta$-IS:} Improving on PyTorch, Hessian-vector products are computed forward-over-reverse (\texttt{jax.jvp} of \texttt{jax.vjp}), power iteration runs in \texttt{lax.while\_loop} with early stopping, batches are accumulated with \texttt{lax.scan}, and synthesizer parameters can be processed in parallel with \texttt{vmap}.
+Path PRNG keys are derived from the path index, so the warmup can be split across devices with identical results.
+
+% ==========================================================================
+\vspace{-8pt}
+\section{Benchmarks}
+\label{sec:bench}
+\vspace{-5pt}
+
+
+% For reference, Table 5 of the ICLR paper (PyTorch 2.8.0, 1 NVIDIA RTX A5000,
+% CUDA 12.4, forward + backward, same signal and JTFS settings):
+%   JTFS:   1731 ms, 12967 MB
+%   SCRAPL: 89.82 ms (median over paths), 2503 MB (max over paths)
+% Compile times in the text are from benchmarks/min_run_1_sec (compile_time column:
+% scrapl_mean, warmup scrapl_mean, jtfs of the JAX TSVs).
+% Numbers from benchmarks/min_run_15_sec/*_cuda.tsv: JTFS = "jtfs" row of
+% benchmark_{jax,torch}_cuda.tsv, SCRAPL = "scrapl_mean" row of the same files,
+% theta-IS = "scrapl_mean" row of benchmark_warmup_{jax,torch}_cuda.tsv.
+% FLOPs are the JAX (XLA) counts; none are measured for the theta-IS warmup.
+\begin{table}[t]
+  \centering
+  \caption{Benchmark results for one optimization step (forward + backward, 44100 samples of audio, batch size 1, 1 thread, single precision, NVIDIA RTX A5000 GPU, CUDA 12.8, PyTorch 2.10, JAX 0.12).
+  For $\theta$-IS, one step estimates the curvature for one path (10 power iterations, $\dim(\boldsymbol{\theta}) = 1$).
+  SCRAPL and $\theta$-IS are benchmarked for $P=315$ paths and averaged, except for memory (maximum).
+  JAX times exclude JIT compilation; FLOPs are counted by XLA and not measured for $\theta$-IS.}
+  \vspace{-8pt}
+  \label{tab:bench}
+  \footnotesize
+  \setlength{\tabcolsep}{3.5pt}
+  \begin{tabular}{llcccc}
+    \toprule
+    \textbf{Method} & \textbf{Framework} & \textbf{FLOPs} $\downarrow$
+      & \textbf{Time} $\downarrow$ & \textbf{IQR} $\downarrow$
+      & \textbf{Mem.} $\downarrow$ \\
+    & & & \textbf{(ms)} & \textbf{(ms)} & \textbf{(MB)} \\
+    \midrule
+    \multirow{2}{*}{\begin{tabular}[c]{@{}l@{}}Full-tree\\(JTFS)\end{tabular}}
+      & PyTorch & \multirow{2}{*}{$2.91 \times 10^{11}$}
+                          &     1991 &     257 &     6164 \\
+      & JAX     &         & \bf  328 & \bf 27.1 & \bf 5562 \\
+    \midrule
+    \multirow{2}{*}{SCRAPL}
+      & PyTorch & \multirow{2}{*}{$3.26 \times 10^{9}$}
+                          &      136 &     24.5 &      680 \\
+      & JAX     &         & \bf 9.77 & \bf 2.03 & \bf  314 \\
+    \midrule
+    \multirow{2}{*}{$\theta$-IS}
+      & PyTorch & \multirow{2}{*}{--}
+                          &      968 &      120 &      730 \\
+      & JAX     &         & \bf  103 & \bf 6.78 & \bf  638 \\
+    \bottomrule
+  \end{tabular}
+  \vspace{-8pt}
+\end{table}
+
+Table~\ref{tab:bench} compares both implementations using the JTFS hyperparameters of~\cite{mitcheltree2026scrapl}.
+JAX is 6.1$\times$, 13.9$\times$, and 9.4$\times$ faster than PyTorch for the full-tree JTFS, SCRAPL, and $\theta$-IS, respectively, and uses less memory throughout.
+With JAX, a SCRAPL step is 34$\times$ faster than a full-tree JTFS step.
+
+XLA compiles each path when it is first sampled, taking 7.8\,s per path on average (11\,s for $\theta$-IS) versus 119\,s for the full-tree JTFS.
+This is paid once per path and can be reused across runs with JAX's persistent compilation cache.
+We omit \texttt{torch.compile}, as it compiled more than 10$\times$ slower than JAX.
+
+% -------------------------------------------------------------------------
+% The bibliography style prints its own numbered "References" section.
+\bibliographystyle{IEEEtran}
+\vspace{-5pt}
+{\footnotesize\bibliography{scrapl_jax_dmrn}}
+
+\end{sloppy}
+\end{document}

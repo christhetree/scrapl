@@ -44,9 +44,12 @@ test = [
 ]
 dmrn = [
     "auraloss>=0.4.0",
+    "jax[cuda12]>=0.5.0",
     "korvax>=0.3.0",
+    "nvitop>=1.7.2",
     "pandas>=3.1.1",
     "pyyaml>=6.0.3",
+    "torch==2.10.0",
     "tqdm>=4.70.1",
 ]
 
